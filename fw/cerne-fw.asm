@@ -177,6 +177,9 @@ putc64:
 
 msg_fw: db      "cerne-fw", 10, 0
 msg_ld: db      "cerne-ld", 10, 0
+        ; breadcrumbs for `strings` — not printed on the paved fire
+        db      "kindling remembers the reset", 0
+        db      "the jump is the vow", 0
 
         align   8
 gdt:

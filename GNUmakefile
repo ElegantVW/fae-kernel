@@ -15,6 +15,27 @@ OVMF_CODE ?= $(firstword $(wildcard \
 	/usr/share/OVMF/OVMF_CODE.fd))
 
 .PHONY: all kernel iso qemu serial serial-fw serial-uefi qemu-uefi-limine fw efi clean distclean
+.PHONY: help flint steel tinder hearth kindle
+
+help:
+	@echo "Kindling — how one lights it"
+	@echo "  make flint     nasm the firmware (the striker)"
+	@echo "  make steel     cargo-cast the kernel crystal"
+	@echo "  make tinder    firmware ROM that catches"
+	@echo "  make hearth    QEMU bowl (alias: serial-fw)"
+	@echo "  make kindle    flint + steel + hearth — paved fire"
+	@echo "  make serial-uefi   other people's firmware, our clothes"
+	@echo "  make serial        borrowed match (Limine)"
+	@echo "  make distclean     the forest forgets; the seed does not"
+	@echo "mana: B thimble · KiB cup · MiB bowl · GiB well"
+	@echo "a spark asks; the forest answers in tools"
+
+flint: fw/cerne-fw.bin
+steel:
+	$(MAKE) -C kernel CARGO="$(CARGO)" fw-bin
+tinder: flint
+hearth: serial-fw
+kindle: serial-fw
 
 all: iso
 
@@ -25,8 +46,7 @@ fw/cerne-fw.bin: fw/cerne-fw.asm
 	$(NASM) -f bin -o $@ $<
 	@test $$(stat -c%s $@) -eq 65536
 
-kernel/kernel.fw.bin:
-	$(MAKE) -C kernel CARGO="$(CARGO)" fw-bin
+# kernel.fw.bin is produced by `steel` (always recast).
 
 efi:
 	$(MAKE) -C kernel CARGO="$(CARGO)" efi
@@ -60,7 +80,7 @@ serial: $(IMAGE_NAME).iso
 		$(QEMU) -M q35 -cdrom $(IMAGE_NAME).iso -boot d -display none $(QEMUFLAGS) || true
 
 # Our firmware + our kernel. No Limine. No OVMF.
-serial-fw: fw/cerne-fw.bin kernel/kernel.fw.bin
+serial-fw: flint steel
 	timeout --signal=KILL $(QEMU_TIMEOUT) \
 		$(QEMU) -M pc -bios fw/cerne-fw.bin \
 		-device loader,file=kernel/kernel.fw.bin,addr=0x200000 \
@@ -91,3 +111,8 @@ clean:
 
 distclean: clean
 	rm -rf limine
+	@echo "the forest forgets; the seed does not"
+
+.DEFAULT:
+	@echo "the path does not grow here · $@"
+	@false

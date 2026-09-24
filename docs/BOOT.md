@@ -20,6 +20,8 @@ cerne: still only a spark
 
 No Limine. No OVMF. The kernel is a flat binary at `0x200000` (`kernel.fw.bin`).
 
+The hand path is blessed: `nasm -f bin fw/cerne-fw.asm -o fw/cerne-fw.bin` then QEMU `-bios` as in `make kindle`. Same fire. `strings` on the ROM hides two murmurs (`kindling remembers the reset`, `the jump is the vow`) — they do not print on serial.
+
 ## Our EFI (`make serial-uefi`)
 
 OVMF (other people's firmware, QEMU's copy of EDK2) loads **our** `BOOTX64.EFI`. Serial / ConOut:

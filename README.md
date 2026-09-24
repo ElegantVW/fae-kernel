@@ -2,7 +2,7 @@
 
 The kernel we write. The pink suite is userspace. This Arch box stays the daily house until a shell here is boringly reliable.
 
-**Proposed creature name: Cerne** (heartwood — the living core of the tree). Vacant until Gil says so. Calcifer is the fire in the *hearth*; Hearth is already the greeter. Cerne is the fire *in the wood*, without copying Miyazaki.
+**Creature name: Kindling** — you light kindling, not the log. The lighting tools *are* the build tools (`make help`: flint, steel, tinder, hearth, kindle). Hearth the greeter is a different fire. First handoff signer is **Flint**, not Kindling.
 
 Closed source for now. All rights reserved. No GitHub remote until Gil opens one (private is the default).
 
@@ -10,7 +10,7 @@ Closed source for now. All rights reserved. No GitHub remote until Gil opens one
 
 x86_64. We write the column: **firmware (asm) → loader (fused) → kernel (Rust)**. Linux syscall ABI table is empty today. Userspace is the suite, later.
 
-See [docs/BOOT.md](docs/BOOT.md).
+See [docs/BOOT.md](docs/BOOT.md), [docs/lore/kindling.md](docs/lore/kindling.md), [docs/handoff.md](docs/handoff.md). Name bowl: [docs/lore/fae-names.md](docs/lore/fae-names.md).
 
 ## Host
 
@@ -24,7 +24,8 @@ On this box, pacman rust stays for the suite. Kernel builds with `~/.cargo/bin/c
 
 ```bash
 cd ~/fae-kernel
-make serial-fw      # OUR firmware + kernel. No Limine. No OVMF.
+make help           # how one lights Kindling
+make kindle         # OUR firmware + kernel. No Limine. No OVMF.
 make serial-uefi    # OVMF → our BOOTX64.EFI
 make serial         # Limine ISO (optional crutch)
 ```

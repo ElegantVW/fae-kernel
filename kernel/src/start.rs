@@ -2,6 +2,7 @@ use core::arch::asm;
 use core::fmt::{self, Write};
 
 const COM1: u16 = 0x3F8;
+// mana: this early stack is a thimble (B). the well (GiB) comes in phase 1.
 
 #[inline]
 unsafe fn outb(port: u16, val: u8) {
@@ -80,7 +81,7 @@ pub fn paint_mark(addr: *mut u8, width: u64, height: u64, pitch: u64, bpp: u16) 
 pub fn start() -> ! {
     serial_init();
     serial_print("fae-kernel\n");
-    serial_print("cerne: still only a spark\n");
+    serial_print("kindling: still only a spark\n");
     hcf();
 }
 

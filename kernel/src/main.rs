@@ -45,7 +45,7 @@ unsafe extern "C" fn kmain() -> ! {
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     start::serial_init();
-    serial_print("panic: ");
+    serial_print("the spark went out: ");
     let _ = writeln!(Serial, "{info}");
     start::hcf();
 }

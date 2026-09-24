@@ -1,6 +1,7 @@
-//! Our BOOTX64.EFI — other people's firmware, our kernel.
 #![no_std]
 #![no_main]
+
+//! Our BOOTX64.EFI — other people's firmware, our kernel.
 
 mod start;
 
@@ -9,8 +10,12 @@ use start::{paint_mark, serial_print, start, Serial};
 use uefi::prelude::*;
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 
+#[used]
+static CLOTHES: &[u8] = b"not their OS; our clothes\0";
+
 #[entry]
 fn efi_main() -> Status {
+    let _ = core::hint::black_box(CLOTHES);
     uefi::helpers::init().ok();
     uefi::system::with_stdout(|stdout| {
         let _ = stdout.write_str("cerne-efi\r\n");
@@ -44,7 +49,7 @@ fn efi_main() -> Status {
 #[panic_handler]
 fn rust_panic(info: &core::panic::PanicInfo) -> ! {
     start::serial_init();
-    serial_print("panic: ");
+    serial_print("the spark went out: ");
     let _ = writeln!(Serial, "{info}");
     start::hcf();
 }
