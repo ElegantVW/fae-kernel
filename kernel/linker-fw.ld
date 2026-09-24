@@ -22,6 +22,7 @@ SECTIONS
         *(.bss .bss.*)
         *(COMMON)
     }
+    PROVIDE(__kernel_end = .);
 
     /DISCARD/ : {
         *(.eh_frame*)

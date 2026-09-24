@@ -51,4 +51,4 @@ make serial         # Limine ISO (optional crutch)
 
 ## Phases
 
-0 this tree (serial hello) → 1 memory → 2 user ELF `write`/`exit` → 3 fork/exec → … suite as guest.
+0 serial hello → **1 memory (kindle well + cup-stack)** → 2 user ELF `write`/`exit` → 3 fork/exec → … suite as guest.

@@ -8,6 +8,7 @@ default-run = "fae-kernel"
 
 [features]
 efi = ["dep:uefi"]
+fw-link = []
 
 [dependencies]
 limine = "0.5"

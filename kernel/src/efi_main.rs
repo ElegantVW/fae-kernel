@@ -3,6 +3,7 @@
 
 //! Our BOOTX64.EFI — other people's firmware, our kernel.
 
+mod mm;
 mod start;
 
 use core::fmt::Write;
@@ -43,7 +44,7 @@ fn efi_main() -> Status {
     if !fb.0.is_null() {
         paint_mark(fb.0, fb.1, fb.2, fb.3, fb.4);
     }
-    start()
+    start(None)
 }
 
 #[panic_handler]

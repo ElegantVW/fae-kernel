@@ -1,8 +1,10 @@
 use core::arch::asm;
 use core::fmt::{self, Write};
 
+use crate::mm::{self, Hint};
+
 const COM1: u16 = 0x3F8;
-// mana: this early stack is a thimble (B). the well (GiB) comes in phase 1.
+// mana: firmware handed us a thimble at 0x7000. take_the_well pours a cup.
 
 #[inline]
 unsafe fn outb(port: u16, val: u8) {
@@ -59,6 +61,22 @@ pub fn serial_print(s: &str) {
     let _ = Serial.write_str(s);
 }
 
+fn serial_u64(n: u64) {
+    if n == 0 {
+        serial_print("0");
+        return;
+    }
+    let mut buf = [0u8; 20];
+    let mut i = 20;
+    let mut x = n;
+    while x > 0 {
+        i -= 1;
+        buf[i] = b'0' + (x % 10) as u8;
+        x /= 10;
+    }
+    let _ = Serial.write_str(core::str::from_utf8(&buf[i..]).unwrap());
+}
+
 /// Optional GOP/Limine framebuffer. Null addr skips the mark.
 #[allow(dead_code)]
 pub fn paint_mark(addr: *mut u8, width: u64, height: u64, pitch: u64, bpp: u16) {
@@ -78,10 +96,36 @@ pub fn paint_mark(addr: *mut u8, width: u64, height: u64, pitch: u64, bpp: u16) 
     }
 }
 
-pub fn start() -> ! {
+/// Ceremony first. Then, if `hint` is Some, Kindling takes the well and a cup-stack.
+pub fn start(hint: Option<Hint>) -> ! {
     serial_init();
     serial_print("fae-kernel\n");
     serial_print("kindling: still only a spark\n");
+    if let Some(hint) = hint {
+        let (top, ram_end, stack) = unsafe { mm::take_the_well(hint) };
+        unsafe {
+            asm!(
+                "mov rsp, {top}",
+                "jmp {cont}",
+                top = in(reg) top,
+                cont = sym after_cup,
+                in("rdi") ram_end,
+                in("rsi") stack,
+                options(noreturn)
+            );
+        }
+    }
+    hcf();
+}
+
+/// rdi = ram_end, rsi = stack size. SysV after the jmp.
+#[inline(never)]
+unsafe extern "C" fn after_cup(ram_end: u64, stack: u64) -> ! {
+    serial_print("kindling: well ");
+    serial_u64(mm::well_mib(ram_end));
+    serial_print(" MiB · stack ");
+    serial_u64(mm::cup_kib(stack));
+    serial_print(" KiB cup\n");
     hcf();
 }
 

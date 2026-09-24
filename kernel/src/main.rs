@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod mm;
 mod start;
 
 use core::fmt::Write;
@@ -39,7 +40,7 @@ unsafe extern "C" fn kmain() -> ! {
             paint_mark(fb.addr(), fb.width(), fb.height(), fb.pitch(), fb.bpp());
         }
     }
-    start()
+    start(None)
 }
 
 #[panic_handler]

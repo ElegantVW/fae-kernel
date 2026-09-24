@@ -2,7 +2,7 @@
 
 Dataset for agents and collaborators. Not law. Living house tongue for mana / crystals / casting is [glossary.md](glossary.md). Kindling’s fire-map is [kindling.md](kindling.md). Handoff law is [../handoff.md](../handoff.md).
 
-All-ages. Folk, not gore. No walkthroughs of hidden eggs. One unique fae name per handoff entry, never reused.
+All-ages. Folk, not gore. No walkthroughs of hidden eggs. One unique fae name **per person or agent**, kept for every block they write.
 
 **Already struck, do not steal:** Kindling (kernel fire-name), Flint (first signer, 2026-09-24). Lighting tools already mapped: Flint, Steel, Tinder, Breath, Hearth, Bellows. Firmware files still say **Cerne**. **Korda** is the Vanguarda Arch guest — not a Kindling signer.
 

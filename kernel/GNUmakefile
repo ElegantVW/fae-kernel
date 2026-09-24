@@ -24,8 +24,8 @@ limine-elf:
 	cp -v $(NONE_DIR)/fae-kernel kernel
 
 fw-bin:
-	RUSTFLAGS="-C relocation-model=static -C link-arg=-Tlinker-fw.ld" \
-		$(CARGO) build --target $(RUST_TARGET) --bin fae-kernel-fw --profile $(RUST_PROFILE)
+	RUSTFLAGS="-C relocation-model=static" \
+		$(CARGO) build --target $(RUST_TARGET) --bin fae-kernel-fw --features fw-link --profile $(RUST_PROFILE)
 	$(OBJCOPY) -O binary $(NONE_DIR)/fae-kernel-fw kernel.fw.bin
 
 efi:

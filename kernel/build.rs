@@ -4,8 +4,8 @@ fn main() {
     if os == "uefi" {
         return;
     }
-    let bin = std::env::var("CARGO_BIN_NAME").unwrap_or_default();
-    let script = if bin == "fae-kernel-fw" {
+    let fw = std::env::var("CARGO_FEATURE_FW_LINK").is_ok();
+    let script = if fw {
         "linker-fw.ld".into()
     } else {
         format!("linker-{arch}.ld")
