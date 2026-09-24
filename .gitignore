@@ -1,0 +1,8 @@
+/kernel/target/
+/kernel/kernel
+/limine/
+/iso_root/
+*.iso
+*.hdd
+/ovmf/
+.idea/

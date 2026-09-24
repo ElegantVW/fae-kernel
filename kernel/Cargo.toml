@@ -1,0 +1,9 @@
+[package]
+name = "fae-kernel"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license-file = "../LICENSE"
+
+[dependencies]
+limine = "0.5"
