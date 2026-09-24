@@ -3,6 +3,7 @@
 
         org     0
         bits    16
+        default abs
 
 start:
         cli
@@ -83,6 +84,7 @@ vga_lilac:
 
 ; --- CMOS RAM size → FMAP at 0x8000 (we are the BIOS; no int 0x15) ---
 cmos_read:
+        or      al, 0x80                ; keep NMI off (we hold the machine)
         out     0x70, al
         in      al, 0x71
         ret
@@ -201,9 +203,21 @@ pm32:
         mov     dword [0x1000], 0x2003
         mov     dword [0x2000], 0x3003
 
+        ; Map only CMOS ram_end (2 MiB pages), not a fake 1 GiB.
+        mov     eax, [0x8008]
+        add     eax, 0x1FFFFF
+        shr     eax, 21
+        cmp     eax, 1
+        jae     .pages
+        mov     eax, 1
+.pages:
+        cmp     eax, 512
+        jbe     .cap
+        mov     eax, 512
+.cap:
+        mov     ecx, eax
         mov     edi, 0x3000
         mov     eax, 0x83
-        mov     ecx, 512
 .fillpd:
         mov     [edi], eax
         add     edi, 8

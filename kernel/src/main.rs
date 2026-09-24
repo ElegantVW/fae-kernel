@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod idt;
 mod mm;
 mod start;
 

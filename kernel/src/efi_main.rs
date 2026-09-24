@@ -3,6 +3,7 @@
 
 //! Our BOOTX64.EFI — other people's firmware, our kernel.
 
+mod idt;
 mod mm;
 mod start;
 

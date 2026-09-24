@@ -64,7 +64,7 @@ fn oom() -> ! {
 }
 
 /// Identity-map 0..ram_end with 2 MiB pages, load CR3, return new stack top.
-pub unsafe fn take_the_well(hint: Hint) -> (*mut u8, u64, u64) {
+pub unsafe fn take_the_well(hint: Hint) -> (*mut u8, u64, u64, u64) {
     let ram_end = hint.ram_end.min(0x1_0000_0000) & !(BIG - 1);
     let drink = hint.kernel_end.max(0x40_0000);
     let need = drink + PAGE * 8 + STACK_MANA;
@@ -101,12 +101,18 @@ pub unsafe fn take_the_well(hint: Hint) -> (*mut u8, u64, u64) {
     }
 
     let stack = bump.alloc(STACK_MANA, PAGE);
-    let canary = 0x00FA_E05F_AE05_FAE1u64;
+    let canary = CANARY;
     unsafe {
         stack.cast::<u64>().write_volatile(canary);
     }
-    let top = unsafe { stack.add(STACK_MANA as usize) };
-    (top, ram_end, STACK_MANA)
+    let top = ((stack as u64) + STACK_MANA) & !0xF;
+    (top as *mut u8, ram_end, STACK_MANA, stack as u64)
+}
+
+pub const CANARY: u64 = 0x00FA_E05F_AE05_FAE1;
+
+pub fn canary_ok(base: u64) -> bool {
+    unsafe { (base as *const u64).read_volatile() == CANARY }
 }
 
 pub fn well_mib(ram_end: u64) -> u64 {

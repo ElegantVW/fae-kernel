@@ -103,16 +103,18 @@ pub fn start(hint: Option<Hint>) -> ! {
     serial_init();
     serial_print("fae-kernel\n");
     serial_print("kindling: still only a spark\n");
+    crate::idt::install();
     if let Some(hint) = hint {
-        let (top, ram_end, stack) = unsafe { mm::take_the_well(hint) };
+        let (top, ram_end, stack, canary_at) = unsafe { mm::take_the_well(hint) };
         unsafe {
+            core::ptr::addr_of_mut!(WELL_MIB).write(mm::well_mib(ram_end));
+            core::ptr::addr_of_mut!(CUP_KIB).write(mm::cup_kib(stack));
+            core::ptr::addr_of_mut!(CANARY_AT).write(canary_at);
             asm!(
                 "mov rsp, {top}",
                 "jmp {cont}",
                 top = in(reg) top,
                 cont = sym after_cup,
-                in("rdi") ram_end,
-                in("rsi") stack,
                 options(noreturn)
             );
         }
@@ -120,13 +122,20 @@ pub fn start(hint: Option<Hint>) -> ! {
     hcf();
 }
 
-/// rdi = ram_end, rsi = stack size. SysV after the jmp.
+static mut WELL_MIB: u64 = 0;
+static mut CUP_KIB: u64 = 0;
+static mut CANARY_AT: u64 = 0;
+
 #[inline(never)]
-unsafe extern "C" fn after_cup(ram_end: u64, stack: u64) -> ! {
+unsafe extern "C" fn after_cup() -> ! {
+    if !mm::canary_ok(unsafe { core::ptr::addr_of!(CANARY_AT).read() }) {
+        serial_print("kindling: the cup was bitten\n");
+        hcf();
+    }
     serial_print("kindling: well ");
-    serial_u64(mm::well_mib(ram_end));
+    serial_u64(unsafe { core::ptr::addr_of!(WELL_MIB).read() });
     serial_print(" MiB · stack ");
-    serial_u64(mm::cup_kib(stack));
+    serial_u64(unsafe { core::ptr::addr_of!(CUP_KIB).read() });
     serial_print(" KiB cup\n");
     hcf();
 }

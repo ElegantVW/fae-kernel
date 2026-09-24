@@ -16,6 +16,14 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-09-24 — Flint — audit and thicken the spark
+
+- Did: CMOS well drives firmware page count (no fake 1 GiB). IDT so a trap says `kindling: trap` instead of a silent reset. Cup canary + 16-byte stack. `make audit` (256/8/4/1G/none/wrong/lilac/q35).
+- Proof: `make audit` → `kindling: audit ok`.
+- Git: this tree.
+- Next: phase 2 ELF.
+- Do not: claim a real #PF recover; push.
+
 ## 2026-09-24 — Flint — lilac truth
 
 - Did: First glyph is Lilac (VGA DAC index 13 + serial `ESC[95m`). CMOS well (we are the BIOS; no `int 0x15`). `KNDL` guest check. Honest MiB / `the well ran dry` / `no guest at 0x200000`. Grove / Gleam / Kindling + 16-color identity (`docs/identity/`).
