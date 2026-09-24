@@ -22,4 +22,6 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G11 | `make below` × 10 | `make below-ten` | **yes — ten ok** |
 | G12 | This file + Flint handoff | `docs/BELOW.md` | yes |
 
+Firmware extras (this sitting): VGA mode 3 by registers, PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`.
+
 Out of gate: disk, SMP APs, LA57 well, trap recover, real iron besides QEMU.

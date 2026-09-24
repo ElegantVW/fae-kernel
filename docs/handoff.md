@@ -16,6 +16,14 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-09-24 — Flint — firmware IDT, VGA mode 3, PIC ICW
+
+- Did: ROM sets 80×25 by VGA registers (no `int 10h`). PIC ICW1–4 then mask. Real-mode IVT 0–31, 32-bit IDT at `0x5000`, 64-bit IDT at `0x6000` until Kindling `lidt` — all say `cerne-fw: trap`. 64-bit `lgdt`. NASM sections, 65536 bytes, no warning. `AUDIT_FW_TRAP` in `make below`. Kernel untouched.
+- Proof: `make below` → `kindling: below ok` (includes `ok fw-trap`). `make below-ten` → `kindling: below ten ok`.
+- Git: this tree.
+- Next: still firmware if Gil wants; phase 2 still shut.
+- Do not: ELF; push.
+
 ## 2026-09-24 — Flint — below gate
 
 - Did: `docs/BELOW.md`. FPU/SSE (`fninit` + `movaps`). PIC masked in firmware and kernel. FMAP checksum (`ram xor KNDL`). `ud2` → `trap 6`. A20 only if off. `make below` = audit + trap + fmap-bad + efi. Limine stays a crutch. **No phase 2.**

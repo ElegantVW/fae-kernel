@@ -26,7 +26,7 @@ help:
 	@echo "  make kindle    flint + steel + hearth — paved fire"
 	@echo "  make hearth-see   same fire, window (lilac VGA)"
 	@echo "  make audit     several bowls; fail if a line is missing"
-	@echo "  make below     full below gate (audit+trap+fmap+efi)"
+	@echo "  make below     full below gate (audit+trap+fmap+fw-trap+efi)"
 	@echo "  make below-ten    gate × 10"
 	@echo "  make serial-uefi   other people's firmware, our clothes"
 	@echo "  make serial        borrowed match (Limine)"
