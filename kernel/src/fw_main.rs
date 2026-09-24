@@ -2,6 +2,7 @@
 #![no_std]
 #![no_main]
 
+mod cpu;
 mod gdt;
 mod idt;
 mod mm;
@@ -24,19 +25,26 @@ core::arch::global_asm!(
 );
 
 const FMAP: u32 = 0x5041_4D46; // 'FMAP'
+const FMAP_KEY: u32 = 0x4C44_4E4B; // 'KNDL'
+
+fn fmap_ram_end() -> u64 {
+    unsafe {
+        let magic = core::ptr::read_volatile(0x8000 as *const u32);
+        let sum = core::ptr::read_volatile(0x8004 as *const u32);
+        let ram = core::ptr::read_volatile(0x8008 as *const u32);
+        if magic == FMAP && sum == (ram ^ FMAP_KEY) {
+            ram as u64
+        } else {
+            0
+        }
+    }
+}
 
 #[unsafe(link_section = ".text.entry")]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn kmain() -> ! {
     let kernel_end = unsafe { &__kernel_end as *const u8 as u64 };
-    let ram_end = unsafe {
-        let magic = core::ptr::read_volatile(0x8000 as *const u32);
-        if magic == FMAP {
-            core::ptr::read_volatile(0x8008 as *const u32) as u64
-        } else {
-            0
-        }
-    };
+    let ram_end = fmap_ram_end();
     start(Some(Hint {
         kernel_end,
         ram_end,

@@ -16,6 +16,14 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-09-24 — Flint — below gate
+
+- Did: `docs/BELOW.md`. FPU/SSE (`fninit` + `movaps`). PIC masked in firmware and kernel. FMAP checksum (`ram xor KNDL`). `ud2` → `trap 6`. A20 only if off. `make below` = audit + trap + fmap-bad + efi. Limine stays a crutch. **No phase 2.**
+- Proof: `make below` → `kindling: below ok`. `make below-ten` → `kindling: below ten ok` (fmap-bad no longer poisons the next flint).
+- Git: this tree.
+- Next: the below gate is green ten times. Phase 2 only when Gil says the spark is enough.
+- Do not: user ELF; `write`; `exit`; push.
+
 ## 2026-09-24 — Flint — GDT, named traps, probe, EFI well
 
 - Did: Own GDT on the BIOS path. IDT vectors 0–31 print `kindling: trap N`. CMOS well is probed with write/read. EFI: trust the map, CLI before LIDT, **switch cup before CR3** (OVMF stack is not in our identity map). LoadedImage so we do not pour tables on the image.

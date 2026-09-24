@@ -1,6 +1,7 @@
 /kernel/target/
 /kernel/kernel
 /kernel/kernel.fw.bin
+/kernel/kernel.trap.bin
 /kernel/BOOTX64.EFI
 /fw/cerne-fw.bin
 /esp/

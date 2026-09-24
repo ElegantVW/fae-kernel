@@ -15,7 +15,7 @@ OVMF_CODE ?= $(firstword $(wildcard \
 	/usr/share/OVMF/OVMF_CODE.fd))
 
 .PHONY: all kernel iso qemu serial serial-fw serial-uefi qemu-uefi-limine fw efi clean distclean
-.PHONY: help flint steel tinder hearth kindle hearth-see audit
+.PHONY: help flint steel tinder hearth kindle hearth-see audit below below-ten
 
 help:
 	@echo "Kindling — how one lights it"
@@ -26,6 +26,8 @@ help:
 	@echo "  make kindle    flint + steel + hearth — paved fire"
 	@echo "  make hearth-see   same fire, window (lilac VGA)"
 	@echo "  make audit     several bowls; fail if a line is missing"
+	@echo "  make below     full below gate (audit+trap+fmap+efi)"
+	@echo "  make below-ten    gate × 10"
 	@echo "  make serial-uefi   other people's firmware, our clothes"
 	@echo "  make serial        borrowed match (Limine)"
 	@echo "  make distclean     the forest forgets; the seed does not"
@@ -40,6 +42,10 @@ hearth: serial-fw
 kindle: serial-fw
 audit:
 	sh scripts/audit-kindle.sh
+below:
+	sh scripts/below.sh
+below-ten:
+	@i=1; while [ $$i -le 10 ]; do echo "==== below $$i/10 ===="; sh scripts/below.sh || exit 1; i=$$((i+1)); done; echo "kindling: below ten ok"
 hearth-see: flint steel
 	$(QEMU) -M pc -bios fw/cerne-fw.bin \
 		-device loader,file=kernel/kernel.fw.bin,addr=0x200000 \

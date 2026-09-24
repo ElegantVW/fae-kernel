@@ -4,7 +4,8 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 export PATH="${HOME}/.cargo/bin:$PATH"
-make flint steel >/dev/null
+nasm -f bin -o fw/cerne-fw.bin fw/cerne-fw.asm
+make steel >/dev/null
 FW=fw/cerne-fw.bin
 K=kernel/kernel.fw.bin
 QEMU="${QEMU:-qemu-system-x86_64}"

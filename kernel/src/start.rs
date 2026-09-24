@@ -103,10 +103,16 @@ pub fn start(hint: Option<Hint>) -> ! {
     serial_init();
     serial_print("fae-kernel\n");
     serial_print("kindling: still only a spark\n");
+    crate::cpu::mask_pic();
     if matches!(&hint, Some(h) if !h.trust_map) {
         crate::gdt::install();
     }
     crate::idt::install();
+    crate::cpu::enable_fpu_sse();
+    #[cfg(feature = "trap6")]
+    unsafe {
+        asm!("ud2");
+    }
     if let Some(hint) = hint {
         if mm::five_level() {
             serial_print("kindling: well waits (5-level)\n");

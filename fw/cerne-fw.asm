@@ -21,6 +21,7 @@ start:
         mov     si, msg_fw
         call    puts16
 
+        call    mask_pic
         call    cmos_ram
         call    a20_fast
 
@@ -96,7 +97,6 @@ cmos_ram:
         xor     ax, ax
         mov     ds, ax
         mov     dword [0x8000], 0x50414D46      ; 'FMAP'
-        mov     dword [0x8004], 0
         mov     dword [0x800C], 0
         mov     al, 0x34
         call    cmos_read
@@ -121,6 +121,11 @@ cmos_ram:
         add     eax, 1024 * 1024
 .store:
         mov     [0x8008], eax
+        xor     eax, 0x4C444E4B                 ; checksum = ram_end xor 'KNDL'
+%ifdef AUDIT_BAD_FMAP
+        xor     eax, 1
+%endif
+        mov     [0x8004], eax
         pop     ds
         pop     ebx
         pop     eax
@@ -179,10 +184,19 @@ puts16:
 .done:
         ret
 
+mask_pic:
+        mov     al, 0xFF
+        out     0x21, al
+        out     0xA1, al
+        ret
+
 a20_fast:
         in      al, 0x92
+        test    al, 2
+        jnz     .on
         or      al, 2
         out     0x92, al
+.on:
         ret
 
         bits    32
