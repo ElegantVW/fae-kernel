@@ -65,8 +65,13 @@ fn oom() -> ! {
 
 /// Identity-map 0..ram_end with 2 MiB pages, load CR3, return new stack top.
 pub unsafe fn take_the_well(hint: Hint) -> (*mut u8, u64, u64) {
-    let ram_end = align_up(hint.ram_end.min(0x1_0000_0000), BIG);
-    let mut bump = Bump::new(hint.kernel_end.max(0x40_0000), ram_end);
+    let ram_end = hint.ram_end.min(0x1_0000_0000) & !(BIG - 1);
+    let drink = hint.kernel_end.max(0x40_0000);
+    let need = drink + PAGE * 8 + STACK_MANA;
+    if ram_end < need || ram_end <= drink {
+        oom();
+    }
+    let mut bump = Bump::new(drink, ram_end);
 
     let pml4 = bump.table();
     let pdpt = bump.table();

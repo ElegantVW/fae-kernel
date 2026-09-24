@@ -18,7 +18,7 @@ fae-kernel
 cerne: still only a spark
 ```
 
-No Limine. No OVMF. The kernel is a flat binary at `0x200000` (`kernel.fw.bin`).
+No Limine. No OVMF. Kernel at `0x200000` must begin `KNDL`. RAM size is CMOS (this ROM *is* the BIOS — there is no `int 0x15`). First glyph is Lilac (VGA 13 + serial `ESC[95m`). `make hearth-see` opens a window.
 
 The hand path is blessed: `nasm -f bin fw/cerne-fw.asm -o fw/cerne-fw.bin` then QEMU `-bios` as in `make kindle`. Same fire. `strings` on the ROM hides two murmurs (`kindling remembers the reset`, `the jump is the vow`) — they do not print on serial.
 

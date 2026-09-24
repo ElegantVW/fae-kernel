@@ -10,7 +10,7 @@ Closed source for now. All rights reserved. No GitHub remote until Gil opens one
 
 x86_64. We write the column: **firmware (asm) → loader (fused) → kernel (Rust)**. Linux syscall ABI table is empty today. Userspace is the suite, later.
 
-See [docs/BOOT.md](docs/BOOT.md), [docs/lore/kindling.md](docs/lore/kindling.md), [docs/handoff.md](docs/handoff.md). Name bowl: [docs/lore/fae-names.md](docs/lore/fae-names.md).
+See [docs/BOOT.md](docs/BOOT.md), [docs/identity/IDENTITY.md](docs/identity/IDENTITY.md) (Grove / Gleam / Kindling, 16 colors), [docs/lore/kindling.md](docs/lore/kindling.md), [docs/handoff.md](docs/handoff.md).
 
 ## Host
 

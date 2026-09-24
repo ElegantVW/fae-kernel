@@ -6,6 +6,7 @@ SECTIONS
     . = 0x200000;
 
     .text : {
+        KEEP(*(.text.magic))
         KEEP(*(.text.entry))
         *(.text .text.*)
     }

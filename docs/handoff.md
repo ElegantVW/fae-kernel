@@ -16,6 +16,14 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-09-24 — Flint — lilac truth
+
+- Did: First glyph is Lilac (VGA DAC index 13 + serial `ESC[95m`). CMOS well (we are the BIOS; no `int 0x15`). `KNDL` guest check. Honest MiB / `the well ran dry` / `no guest at 0x200000`. Grove / Gleam / Kindling + 16-color identity (`docs/identity/`).
+- Proof: 256M → well 256; 8M → well 8; 4M → dry; 1G → 1024; no/wrong kernel → no guest. Serial starts `ESC[95m`.
+- Git: this tree.
+- Next: phase 2 ELF. Debate Grove/Gleam names.
+- Do not: claim E820; push.
+
 ## 2026-09-24 — Flint — Kindling takes the well
 
 - Did: Phase 1 memory on the kindle path. Own identity page tables (2 MiB pages), bump well, 64 KiB cup-stack (not firmware `0x7000`). Handoff names the **worker**, not the block — Flint stays Flint.

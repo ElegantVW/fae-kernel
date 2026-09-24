@@ -32,6 +32,8 @@ pub fn serial_init() {
         outb(COM1 + 2, 0xC7);
         outb(COM1 + 4, 0x0B);
     }
+    // 16-color slot 13 Lilac, in case firmware did not already cast it.
+    serial_print("\x1b[95m");
 }
 
 fn serial_put(b: u8) {
