@@ -1,5 +1,10 @@
 /kernel/target/
 /kernel/kernel
+/kernel/kernel.fw.bin
+/kernel/BOOTX64.EFI
+/fw/cerne-fw.bin
+/esp/
+/ovmf_vars.fd
 /limine/
 /iso_root/
 *.iso

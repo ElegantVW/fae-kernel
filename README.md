@@ -8,31 +8,25 @@ Closed source for now. All rights reserved. No GitHub remote until Gil opens one
 
 ## What this is
 
-x86_64 kernel, Rust + tiny `asm`, **Limine** boot protocol, Linux syscall ABI (empty table today). First demo: QEMU prints `fae-kernel` on serial.
+x86_64. We write the column: **firmware (asm) → loader (fused) → kernel (Rust)**. Linux syscall ABI table is empty today. Userspace is the suite, later.
 
-## Boot: Limine vs raw UEFI
-
-**UEFI** is the firmware on the machine (or OVMF in QEMU). Speaking UEFI ourselves means we are an `.efi` app: memory map, GOP framebuffer, exit boot services, then our own page tables. More spec, more code, one less extra binary.
-
-**Limine** is a small bootloader. Firmware loads Limine; Limine drops us in long mode at `kmain` with a memory map (and a framebuffer if we ask). We depend on the Limine binary; we do not write the firmware handshake.
-
-This repo uses **Limine** so phase 0 is a serial line, not a year of UEFI. The ISO still boots on BIOS *and* UEFI firmware (Limine ships both). Raw UEFI stub can come later if we want to drop the bootloader.
+See [docs/BOOT.md](docs/BOOT.md).
 
 ## Host
 
 ```text
-rustup (nightly + x86_64-unknown-none)   # ~/.cargo — does not replace pacman rust
-qemu-system-x86_64
-xorriso   (package: libisoburn)
+nasm, qemu-system-x86_64, edk2-ovmf
+rustup nightly (x86_64-unknown-none + x86_64-unknown-uefi) in ~/.cargo
+xorriso (libisoburn) — only for the optional Limine ISO
 ```
 
 On this box, pacman rust stays for the suite. Kernel builds with `~/.cargo/bin/cargo`.
 
 ```bash
 cd ~/fae-kernel
-make            # kernel ELF + ISO (needs xorriso + limine clone)
-make qemu       # BIOS QEMU, serial on stdio (needs qemu)
-make serial     # same, no window; CI greps fae-kernel
+make serial-fw      # OUR firmware + kernel. No Limine. No OVMF.
+make serial-uefi    # OVMF → our BOOTX64.EFI
+make serial         # Limine ISO (optional crutch)
 ```
 
 `limine/` is cloned at build time (`v10.x-binary`), not vendored.
@@ -41,8 +35,9 @@ make serial     # same, no window; CI greps fae-kernel
 
 | Path | Role |
 |---|---|
-| `kernel/` | `no_std` crate |
-| `limine.conf` | boot menu |
+| `fw/cerne-fw.asm` | firmware + loader (reset vector) |
+| `kernel/` | `no_std` crate (`start`, Limine bin, fw bin, EFI bin) |
+| `limine.conf` | optional Limine menu |
 | `docs/syscalls.md` | living Linux ABI table (honest stubs) |
 | `docs/BOOT.md` | Limine vs UEFI, QEMU flags |
 

@@ -4,6 +4,24 @@ version = "0.0.0"
 edition = "2024"
 publish = false
 license-file = "../LICENSE"
+default-run = "fae-kernel"
+
+[features]
+efi = ["dep:uefi"]
 
 [dependencies]
 limine = "0.5"
+uefi = { version = "0.35", optional = true }
+
+[[bin]]
+name = "fae-kernel"
+path = "src/main.rs"
+
+[[bin]]
+name = "fae-kernel-fw"
+path = "src/fw_main.rs"
+
+[[bin]]
+name = "cerne-efi"
+path = "src/efi_main.rs"
+required-features = ["efi"]
