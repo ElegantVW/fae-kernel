@@ -38,29 +38,58 @@ ivt16:
         push    es
         push    di
         push    cx
+        push    bx
         xor     ax, ax
         mov     es, ax
         xor     di, di
+        xor     bx, bx
         mov     cx, 32
 .fill:
-        mov     ax, trap16
+        mov     ax, trap16_stubs
+        add     ax, bx
         stosw
         mov     ax, 0xF000
         stosw
+        add     bx, 5
         loop    .fill
+        pop     bx
         pop     cx
         pop     di
         pop     es
         ret
 
-trap16:
+trap16_common:
+        mov     ah, 0
+        push    ax
         mov     ax, 0xF000
         mov     ds, ax
         mov     si, msg_fw_trap
         call    puts16
+        pop     ax
+        call    putdec8
+        mov     al, 10
+        call    putc16
 .hang:
         hlt
         jmp     .hang
+
+putdec8:
+        aam
+        add     ax, 0x3030
+        push    ax
+        mov     al, ah
+        call    putc16
+        pop     ax
+        call    putc16
+        ret
+
+trap16_stubs:
+%assign i 0
+%rep 32
+        mov     al, i
+        jmp     strict near trap16_common
+%assign i i+1
+%endrep
 
 ; --- VGA 80×25 colour text (no BIOS) then DAC + logo ---
 vga_wr:
@@ -201,7 +230,6 @@ cmos_ram:
         xor     ax, ax
         mov     ds, ax
         mov     dword [0x8000], 0x50414D46
-        mov     dword [0x800C], 0
         mov     al, 0x34
         call    cmos_read
         mov     bl, al
@@ -224,7 +252,21 @@ cmos_ram:
         shl     eax, 10
         add     eax, 1024 * 1024
 .store:
-        mov     [0x8008], eax
+        mov     [0x8008], eax                   ; ram_end
+        mov     dword [0x800C], 2               ; nreg
+        mov     dword [0x8010], 0
+        mov     dword [0x8014], 0x9F000
+        mov     dword [0x8018], 0x100000
+        cmp     eax, 0x100000
+        jae     .ext
+        xor     eax, eax
+        jmp     .len1
+.ext:
+        sub     eax, 0x100000
+.len1:
+        mov     [0x801C], eax
+        mov     eax, [0x8008]
+        xor     eax, 2
         xor     eax, 0x4C444E4B
 %ifdef AUDIT_BAD_FMAP
         xor     eax, 1
@@ -327,10 +369,10 @@ pm32:
         mov     gs, ax
         mov     esp, 0x7000
 
-        ; 32-bit IDT at 0x5000 — all gates → trap32
+        ; 32-bit IDT at 0x5000 — vectors 0–31 named stubs
         mov     edi, 0x5000
-        mov     ecx, 256
-        mov     ebx, trap32 + 0xF0000
+        mov     ebx, trap32_stubs + 0xF0000
+        mov     ecx, 32
 .fill32:
         mov     eax, ebx
         stosw
@@ -341,37 +383,68 @@ pm32:
         mov     eax, ebx
         shr     eax, 16
         stosw
+        add     ebx, 10
         loop    .fill32
+        mov     ecx, 224
+        mov     ebx, trap32_common + 0xF0000
+.fill32b:
+        mov     eax, ebx
+        stosw
+        mov     ax, 0x08
+        stosw
+        mov     ax, 0x8E00
+        stosw
+        mov     eax, ebx
+        shr     eax, 16
+        stosw
+        loop    .fill32b
         lidt    [idt32_ptr + 0xF0000]
 %ifdef AUDIT_FW_TRAP
-        ud2
+        int     6
 %endif
 
         mov     edi, 0x1000
-        mov     ecx, 0xC00
+        mov     ecx, 0x1000
         xor     eax, eax
         rep     stosd
         mov     dword [0x1000], 0x2003
         mov     dword [0x2000], 0x3003
+        mov     dword [0x3000], 0x4003          ; PD[0] → 4K PT
+        mov     edi, 0x4000
+        xor     ebx, ebx
+        mov     ecx, 512
+.fillpt:
+        mov     eax, ebx
+        or      eax, 3
+        cmp     ebx, 0xA0000
+        jb      .rampt
+        cmp     ebx, 0x100000
+        jae     .rampt
+        or      eax, 0x18                       ; PCD|PWT hole
+.rampt:
+        mov     [edi], eax
+        add     edi, 8
+        add     ebx, 0x1000
+        loop    .fillpt
         mov     eax, [0x8008]
         add     eax, 0x1FFFFF
         shr     eax, 21
-        cmp     eax, 1
-        jae     .pages
-        mov     eax, 1
-.pages:
-        cmp     eax, 512
+        cmp     eax, 2
+        jb      .skip2m
+        dec     eax
+        cmp     eax, 511
         jbe     .cap
-        mov     eax, 512
+        mov     eax, 511
 .cap:
         mov     ecx, eax
-        mov     edi, 0x3000
-        mov     eax, 0x83
+        mov     edi, 0x3008
+        mov     eax, 0x200000 | 0x83
 .fillpd:
         mov     [edi], eax
         add     edi, 8
         add     eax, 0x200000
         loop    .fillpd
+.skip2m:
 
         mov     eax, 0x1000
         mov     cr3, eax
@@ -387,26 +460,48 @@ pm32:
         mov     cr0, eax
         jmp     0x18:lm64 + 0xF0000
 
-trap32:
+trap32_stubs:
+%assign i 0
+%rep 32
+        mov     eax, i
+        jmp     strict near trap32_common
+%assign i i+1
+%endrep
+
+trap32_common:
         mov     ax, 0x10
         mov     ds, ax
         mov     es, ax
+        push    eax
         mov     esi, msg_fw_trap + 0xF0000
 .p32:
         lodsb
         test    al, al
-        jz      .h32
+        jz      .num32
         cmp     al, 10
         jne     .o32
-        mov     al, 13
-        call    putc32
-        mov     al, 10
+        jmp     .p32
 .o32:
         call    putc32
         jmp     .p32
+.num32:
+        pop     eax
+        call    putdec32
+        mov     al, 10
+        call    putc32
 .h32:
         hlt
         jmp     .h32
+
+putdec32:
+        aam
+        add     ax, 0x3030
+        push    eax
+        mov     al, ah
+        call    putc32
+        pop     eax
+        call    putc32
+        ret
 
 putc32:
         push    edx
@@ -436,8 +531,8 @@ lm64:
 
         ; 64-bit IDT at 0x6000 until Kindling lidt
         mov     rdi, 0x6000
-        mov     rcx, 256
-        mov     rbx, trap64 + 0xF0000
+        mov     rcx, 32
+        mov     rbx, trap64_stubs + 0xF0000
 .fill64:
         mov     rax, rbx
         stosw
@@ -452,7 +547,25 @@ lm64:
         stosd
         xor     eax, eax
         stosd
+        add     rbx, 10
         loop    .fill64
+        mov     rcx, 224
+        mov     rbx, trap64_common + 0xF0000
+.fill64b:
+        mov     rax, rbx
+        stosw
+        mov     ax, 0x18
+        stosw
+        mov     ax, 0x8E00
+        stosw
+        mov     rax, rbx
+        shr     rax, 16
+        stosw
+        shr     rax, 16
+        stosd
+        xor     eax, eax
+        stosd
+        loop    .fill64b
         lidt    [idt64_ptr + 0xF0000]
 
         mov     rsi, 0xF0000 + msg_ld
@@ -468,14 +581,45 @@ lm64:
         mov     rax, 0x200004
         jmp     rax
 
-trap64:
+trap64_stubs:
+%assign i 0
+%rep 32
+        mov     edi, i
+        jmp     strict near trap64_common
+%assign i i+1
+%endrep
+
+trap64_common:
         mov     ax, 0x20
         mov     ds, ax
+        push    rdi
         mov     rsi, 0xF0000 + msg_fw_trap
         call    puts64
+        pop     rdi
+        mov     rax, rdi
+        call    putdec64
+        mov     al, 10
+        call    putc64
 .h64:
         hlt
         jmp     .h64
+
+putdec64:
+        push    rbx
+        push    rdx
+        xor     rdx, rdx
+        mov     rbx, 10
+        div     rbx
+        add     al, '0'
+        push    rdx
+        call    putc64
+        pop     rdx
+        mov     al, dl
+        add     al, '0'
+        call    putc64
+        pop     rdx
+        pop     rbx
+        ret
 
 puts64:
         lodsb
@@ -510,7 +654,7 @@ msg_ansi:    db 27, "[95m", 0
 msg_fw:      db "cerne-fw", 10, 0
 msg_ld:      db "cerne-ld", 10, 0
 msg_miss:    db "kindling: no guest at 0x200000", 10, 0
-msg_fw_trap: db "cerne-fw: trap", 10, 0
+msg_fw_trap: db "cerne-fw: trap ", 0
              db "kindling remembers the reset", 0
              db "the jump is the vow", 0
 

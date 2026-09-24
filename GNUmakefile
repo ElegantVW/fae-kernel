@@ -59,6 +59,7 @@ kernel:
 fw/cerne-fw.bin: fw/cerne-fw.asm
 	$(NASM) -f bin -o $@ $<
 	@test $$(stat -c%s $@) -eq 65536
+	python3 scripts/romsum.py $@
 
 # kernel.fw.bin is produced by `steel` (always recast).
 

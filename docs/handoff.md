@@ -16,6 +16,14 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-09-24 — Flint — firmware contract, 4K low map, ROM sum, FMAP regions
+
+- Did: `docs/FIRMWARE.md`. IBM ROM checksum (last byte, `scripts/romsum.py`). FMAP v1: nreg=2, `0–0x9F000` and `1MiB–ram_end`. First 2 MiB as 4 KiB pages (PCD+PWT on `A0000–FFFFF`). Traps print a number (`cerne-fw: trap N`). Kernel checksum is `ram xor nreg xor KNDL`.
+- Proof: `make below` → `kindling: below ok`.
+- Git: this tree.
+- Next: firmware is at the stop-line unless Gil wants more ROM. Phase 2 still shut.
+- Do not: ACPI; disk; ELF; push.
+
 ## 2026-09-24 — Flint — firmware IDT, VGA mode 3, PIC ICW
 
 - Did: ROM sets 80×25 by VGA registers (no `int 10h`). PIC ICW1–4 then mask. Real-mode IVT 0–31, 32-bit IDT at `0x5000`, 64-bit IDT at `0x6000` until Kindling `lidt` — all say `cerne-fw: trap`. 64-bit `lgdt`. NASM sections, 65536 bytes, no warning. `AUDIT_FW_TRAP` in `make below`. Kernel untouched.

@@ -24,6 +24,7 @@ make steel >/dev/null
 
 echo "---- fmap-bad ----"
 nasm -f bin -DAUDIT_BAD_FMAP -o fw/cerne-fw.bin fw/cerne-fw.asm
+python3 scripts/romsum.py fw/cerne-fw.bin
 got=$(timeout --signal=KILL 3 qemu-system-x86_64 -M pc -m 256M \
   -bios fw/cerne-fw.bin -device loader,file=kernel/kernel.fw.bin,addr=0x200000 \
   -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
@@ -34,9 +35,11 @@ printf '%s\n' "$got" | grep -F -q "the well ran dry" || {
 }
 echo "ok   fmap-bad"
 nasm -f bin -o fw/cerne-fw.bin fw/cerne-fw.asm
+python3 scripts/romsum.py fw/cerne-fw.bin
 
 echo "---- fw-trap ----"
 nasm -f bin -DAUDIT_FW_TRAP -o fw/cerne-fw.bin fw/cerne-fw.asm
+python3 scripts/romsum.py fw/cerne-fw.bin
 got=$(timeout --signal=KILL 3 qemu-system-x86_64 -M pc -m 256M \
   -bios fw/cerne-fw.bin -device loader,file=kernel/kernel.fw.bin,addr=0x200000 \
   -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
@@ -47,6 +50,7 @@ printf '%s\n' "$got" | grep -F -q "cerne-fw: trap" || {
 }
 echo "ok   fw-trap"
 nasm -f bin -o fw/cerne-fw.bin fw/cerne-fw.asm
+python3 scripts/romsum.py fw/cerne-fw.bin
 
 echo "---- efi ----"
 make efi >/dev/null

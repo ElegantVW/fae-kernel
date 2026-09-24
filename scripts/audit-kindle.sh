@@ -5,6 +5,7 @@ ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 export PATH="${HOME}/.cargo/bin:$PATH"
 nasm -f bin -o fw/cerne-fw.bin fw/cerne-fw.asm
+python3 scripts/romsum.py fw/cerne-fw.bin
 make steel >/dev/null
 FW=fw/cerne-fw.bin
 K=kernel/kernel.fw.bin

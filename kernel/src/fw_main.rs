@@ -32,7 +32,8 @@ fn fmap_ram_end() -> u64 {
         let magic = core::ptr::read_volatile(0x8000 as *const u32);
         let sum = core::ptr::read_volatile(0x8004 as *const u32);
         let ram = core::ptr::read_volatile(0x8008 as *const u32);
-        if magic == FMAP && sum == (ram ^ FMAP_KEY) {
+        let nreg = core::ptr::read_volatile(0x800C as *const u32);
+        if magic == FMAP && sum == (ram ^ nreg ^ FMAP_KEY) {
             ram as u64
         } else {
             0
