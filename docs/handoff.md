@@ -16,6 +16,14 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-09-24 — Flint — GDT, named traps, probe, EFI well
+
+- Did: Own GDT on the BIOS path. IDT vectors 0–31 print `kindling: trap N`. CMOS well is probed with write/read. EFI: trust the map, CLI before LIDT, **switch cup before CR3** (OVMF stack is not in our identity map). LoadedImage so we do not pour tables on the image.
+- Proof: `make audit` ok. `make serial-uefi` → `efi map 229 MiB` then `well 228 MiB · stack 64 KiB cup`.
+- Git: this tree.
+- Next: phase 2 ELF.
+- Do not: 5-level paging well; Limine well; push.
+
 ## 2026-09-24 — Flint — audit and thicken the spark
 
 - Did: CMOS well drives firmware page count (no fake 1 GiB). IDT so a trap says `kindling: trap` instead of a silent reset. Cup canary + 16-byte stack. `make audit` (256/8/4/1G/none/wrong/lilac/q35).

@@ -2,6 +2,7 @@
 #![no_std]
 #![no_main]
 
+mod gdt;
 mod idt;
 mod mm;
 mod start;
@@ -39,6 +40,7 @@ unsafe extern "C" fn kmain() -> ! {
     start(Some(Hint {
         kernel_end,
         ram_end,
+        trust_map: false,
     }))
 }
 

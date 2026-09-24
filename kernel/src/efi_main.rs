@@ -3,14 +3,19 @@
 
 //! Our BOOTX64.EFI — other people's firmware, our kernel.
 
+mod gdt;
 mod idt;
 mod mm;
 mod start;
 
 use core::fmt::Write;
+use mm::Hint;
 use start::{paint_mark, serial_print, start, Serial};
+use uefi::mem::memory_map::MemoryMap;
 use uefi::prelude::*;
+use uefi::boot::MemoryType;
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
+use uefi::proto::loaded_image::LoadedImage;
 
 #[used]
 static CLOTHES: &[u8] = b"not their OS; our clothes\0";
@@ -41,11 +46,31 @@ fn efi_main() -> Status {
             );
         }
     }
-    let _map = unsafe { uefi::boot::exit_boot_services(None) };
+    let mut kernel_end = 0x40_0000u64;
+    if let Ok(img) = uefi::boot::open_protocol_exclusive::<LoadedImage>(uefi::boot::image_handle())
+    {
+        let (base, size) = img.info();
+        kernel_end = (base as u64).saturating_add(size);
+    }
+    let map = unsafe { uefi::boot::exit_boot_services(None) };
     if !fb.0.is_null() {
         paint_mark(fb.0, fb.1, fb.2, fb.3, fb.4);
     }
-    start(None)
+    let mut ram_end = 0u64;
+    for d in map.entries() {
+        if d.ty == MemoryType::CONVENTIONAL {
+            let end = d.phys_start.saturating_add(d.page_count.saturating_mul(4096));
+            ram_end = ram_end.max(end);
+        }
+    }
+    let ram_end = ram_end
+        .max(kernel_end.saturating_add(0x20_0000))
+        .min(1 << 30);
+    start(Some(Hint {
+        kernel_end,
+        ram_end,
+        trust_map: true,
+    }))
 }
 
 #[panic_handler]

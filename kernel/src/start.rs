@@ -63,7 +63,7 @@ pub fn serial_print(s: &str) {
     let _ = Serial.write_str(s);
 }
 
-fn serial_u64(n: u64) {
+pub(crate) fn serial_u64(n: u64) {
     if n == 0 {
         serial_print("0");
         return;
@@ -103,17 +103,31 @@ pub fn start(hint: Option<Hint>) -> ! {
     serial_init();
     serial_print("fae-kernel\n");
     serial_print("kindling: still only a spark\n");
+    if matches!(&hint, Some(h) if !h.trust_map) {
+        crate::gdt::install();
+    }
     crate::idt::install();
     if let Some(hint) = hint {
-        let (top, ram_end, stack, canary_at) = unsafe { mm::take_the_well(hint) };
+        if mm::five_level() {
+            serial_print("kindling: well waits (5-level)\n");
+            hcf();
+        }
+        if hint.trust_map {
+            serial_print("kindling: efi map ");
+            serial_u64(hint.ram_end / (1024 * 1024));
+            serial_print(" MiB\n");
+        }
+        let well = unsafe { mm::prepare_well(hint) };
         unsafe {
-            core::ptr::addr_of_mut!(WELL_MIB).write(mm::well_mib(ram_end));
-            core::ptr::addr_of_mut!(CUP_KIB).write(mm::cup_kib(stack));
-            core::ptr::addr_of_mut!(CANARY_AT).write(canary_at);
+            core::ptr::addr_of_mut!(WELL_MIB).write(mm::well_mib(well.ram_end));
+            core::ptr::addr_of_mut!(CUP_KIB).write(mm::cup_kib(well.stack));
+            core::ptr::addr_of_mut!(CANARY_AT).write(well.canary_at);
             asm!(
                 "mov rsp, {top}",
+                "mov cr3, {cr3}",
                 "jmp {cont}",
-                top = in(reg) top,
+                top = in(reg) well.top,
+                cr3 = in(reg) well.cr3,
                 cont = sym after_cup,
                 options(noreturn)
             );

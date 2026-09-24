@@ -18,6 +18,8 @@ pub struct Hint {
     pub kernel_end: u64,
     /// First byte past RAM we dare map (physical, exclusive).
     pub ram_end: u64,
+    /// EFI map is already the truth — do not probe (MMIO).
+    pub trust_map: bool,
 }
 
 pub struct Bump {
@@ -63,9 +65,30 @@ fn oom() -> ! {
     crate::start::hcf();
 }
 
-/// Identity-map 0..ram_end with 2 MiB pages, load CR3, return new stack top.
-pub unsafe fn take_the_well(hint: Hint) -> (*mut u8, u64, u64, u64) {
-    let ram_end = hint.ram_end.min(0x1_0000_0000) & !(BIG - 1);
+pub fn five_level() -> bool {
+    let mut cr4: u64;
+    unsafe {
+        asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags));
+    }
+    cr4 & (1 << 12) != 0
+}
+
+pub struct Well {
+    pub top: u64,
+    pub ram_end: u64,
+    pub stack: u64,
+    pub canary_at: u64,
+    pub cr3: u64,
+}
+
+/// Build tables and a cup in RAM we already stand on. Caller switches RSP, then CR3.
+pub unsafe fn prepare_well(hint: Hint) -> Well {
+    let claimed = hint.ram_end.min(0x1_0000_0000);
+    let ram_end = if hint.trust_map {
+        claimed
+    } else {
+        probe_cap(claimed)
+    } & !(BIG - 1);
     let drink = hint.kernel_end.max(0x40_0000);
     let need = drink + PAGE * 8 + STACK_MANA;
     if ram_end < need || ram_end <= drink {
@@ -96,17 +119,19 @@ pub unsafe fn take_the_well(hint: Hint) -> (*mut u8, u64, u64, u64) {
         gb += 1;
     }
 
-    unsafe {
-        asm!("mov cr3, {}", in(reg) pml4 as u64, options(nostack));
-    }
-
     let stack = bump.alloc(STACK_MANA, PAGE);
     let canary = CANARY;
     unsafe {
         stack.cast::<u64>().write_volatile(canary);
     }
     let top = ((stack as u64) + STACK_MANA) & !0xF;
-    (top as *mut u8, ram_end, STACK_MANA, stack as u64)
+    Well {
+        top,
+        ram_end,
+        stack: STACK_MANA,
+        canary_at: stack as u64,
+        cr3: pml4 as u64,
+    }
 }
 
 pub const CANARY: u64 = 0x00FA_E05F_AE05_FAE1;
@@ -121,4 +146,25 @@ pub fn well_mib(ram_end: u64) -> u64 {
 
 pub fn cup_kib(stack: u64) -> u64 {
     stack / 1024
+}
+
+/// Walk 2 MiB steps with a write/read. Stop at CMOS cap or first lie.
+fn probe_cap(cap: u64) -> u64 {
+    let cap = cap.min(0x1_0000_0000);
+    let mut last = 0x20_0000u64;
+    let mut p = 0x40_0000u64;
+    while p.saturating_add(8) <= cap {
+        let ptr = p as *mut u64;
+        let token = 0x4B4E_444C_u64 ^ p;
+        let old = unsafe { ptr.read_volatile() };
+        unsafe { ptr.write_volatile(token) };
+        let got = unsafe { ptr.read_volatile() };
+        unsafe { ptr.write_volatile(old) };
+        if got != token {
+            break;
+        }
+        last = p.saturating_add(BIG);
+        p = p.saturating_add(BIG);
+    }
+    last.min(cap)
 }
