@@ -16,7 +16,7 @@ run() {
   name=$1
   want=$2
   shift 2
-  got=$(timeout --signal=KILL 3 "$@" 2>/dev/null | tr -d '\r' || true)
+  got=$(timeout --foreground --signal=KILL 3 "$@" 2>/dev/null | tr -d '\r' || true)
   printf '%s\n' "$got" | grep -F -q "$want" || {
     echo "FAIL $name (want: $want)"
     echo "$got" | tail -8

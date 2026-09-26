@@ -91,12 +91,12 @@ qemu: $(IMAGE_NAME).iso
 	$(QEMU) -M q35 -cdrom $(IMAGE_NAME).iso -boot d $(QEMUFLAGS)
 
 serial: $(IMAGE_NAME).iso
-	timeout --signal=KILL $(QEMU_TIMEOUT) \
+	timeout --foreground --signal=KILL $(QEMU_TIMEOUT) \
 		$(QEMU) -M q35 -cdrom $(IMAGE_NAME).iso -boot d -display none $(QEMUFLAGS) || true
 
 # Our firmware + our kernel. No Limine. No OVMF.
 serial-fw: flint steel
-	timeout --signal=KILL $(QEMU_TIMEOUT) \
+	timeout --foreground --signal=KILL $(QEMU_TIMEOUT) \
 		$(QEMU) -M pc -bios fw/cerne-fw.bin \
 		-device loader,file=kernel/kernel.fw.bin,addr=0x200000 \
 		-display none $(QEMUFLAGS) || true
@@ -110,7 +110,7 @@ serial-uefi: efi
 	mkdir -p esp/EFI/BOOT
 	cp -v kernel/BOOTX64.EFI esp/EFI/BOOT/
 	cp -f $(OVMF_VARS_SRC) ovmf_vars.fd
-	timeout --signal=KILL $(QEMU_TIMEOUT) \
+	timeout --foreground --signal=KILL $(QEMU_TIMEOUT) \
 		$(QEMU) -M q35 -display none $(QEMUFLAGS) \
 		-drive if=pflash,format=raw,unit=0,readonly=on,file=$(OVMF_CODE) \
 		-drive if=pflash,format=raw,unit=1,file=ovmf_vars.fd \
