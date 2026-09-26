@@ -4,6 +4,16 @@ x86_64 kernel we write. The pink suite is userspace. Creature name: **Kindling**
 
 Phase 1 (memory: kindle well + cup-stack) is green. Phase 2 (user ELF `write`/`exit`) is shut until the spark is enough.
 
+## Look
+
+![make kindle serial boot](assets/screenshots/kindle-serial.png)
+![Kindling boot recording](assets/screenshots/kindle-boot.gif)
+![Guest VGA via VNC — palette + cursor only](assets/screenshots/kindle-vga.png)
+
+The VGA frame is honest: this QEMU has no GUI backend, so the shot comes
+from its VNC server. The firmware draws serial + lilac palette, not VGA
+text (font RAM stays empty) — hence background + cursor. Mark: `docs/identity/logo.txt`.
+
 ## What this is
 
 The column: **firmware (asm) → loader (fused in the same ROM) → kernel (Rust)**. Linux syscall ABI table is empty today (`docs/syscalls.md` — every entry `missing`, a missing syscall returns `ENOSYS`).
