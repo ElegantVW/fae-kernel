@@ -52,6 +52,7 @@ Soft yellow is **Gold (14)** and **Honey (6)**. Orange sits in Honey. Pinks are 
 |---|---|
 | Kindling / Gleam (the machine) | Hardware VGA 8×16 / 9×16, CP437. Box drawing `+|/-`. No TrueType. |
 | Serial / kit TUIs | Same 16 colors. Unicode only when the terminal already has it; firmware never assumes it. |
+| Grove site | DejaVu Sans Mono everywhere — the site must read like the screenshots. No serif on screen. |
 | Paper / Grove docs | Fraunces (display) + a humanist sans if present; otherwise the term art *is* the logo. |
 
 There is no logo font. The logo is pixels in the 16.
