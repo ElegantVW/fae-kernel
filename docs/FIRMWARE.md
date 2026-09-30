@@ -15,8 +15,11 @@
 | `0x6000` | 64-bit IDT (until Kindling `lidt`) |
 | `0x7000` | stack (grows down) |
 | `0x8000` | FMAP |
+| `0x8400` | KMAP scratch (the loader reads disk LBA 0 here) |
+| `0x9000` | `cerne-ld`, the loader — 16KiB slot from disk LBA 1..32 |
 
-Do not put Kindling’s cup in `0–4 MiB`.
+Do not put Kindling's cup in `0–4 MiB`. `0x8400` and `0x9000–0xCFFF` belong to
+the loader and are free RAM again once the guest takes the jump.
 
 ## GDT (ROM)
 
@@ -47,9 +50,37 @@ Never a usable region covering `0xA0000–0xFFFFF`.
 - **0–2 MiB:** 4 KiB pages. `0xA0000–0xFFFFF` present with PCD+PWT (hole / ROM / VGA).
 - **2 MiB–ram_end:** 2 MiB pages.
 
+## Loader (`ld/cerne-ld.asm`)
+
+The firmware reads **LBA 1..32** of the boot disk to `0x9000` and checks the
+slot trailer `dword[0xCFFC] == 'LDOK'` (`0x4B4F444C`) — a truncated or absent
+slot is `cerne-fw: no loader`, a floating bus `cerne-fw: no disk`; either way
+`kindling: no guest at 0x200000` and `hlt`. Never half a jump.
+
+On success it jumps `0x9000` in long mode: segments `0x20`, `RSP 0x7000`, this
+ROM’s GDT / IDT / page tables still standing, serial ready. The loader is
+self-contained (own ATA PIO, own serial) and owes the guest: read the KMAP,
+load the kernel straight to `0x200000` (128 sectors per command), check its
+XOR and `'KNDL'`, jump `0x200004`. Refusals print `cerne-ld: no disk` /
+`cerne-ld: bad kmap` / `cerne-ld: kernel checksum`, then the house line.
+
+## KMAP (disk LBA 0)
+
+| Off | Size | |
+|---|---|---|
+| 0 | u32 | `'KMAP'` (`0x50414D4B`) |
+| 4 | u32 | checksum = `kernel_lba xor kernel_sectors xor kernel_xor xor 'KMAP'` |
+| 8 | u32 | `kernel_lba` |
+| 12 | u32 | `kernel_sectors` (the loader reads `kernel_sectors * 512` bytes) |
+| 16 | u32 | `kernel_xor` — XOR of every dword of the sector-padded kernel |
+
+Written by `scripts/mkimg.py`. `--bad` corrupts the checksum (gate G14),
+`--wrong` points it at empty disk, consistently (gate G2 “wrong” — the `'KNDL'`
+check is the one that catches that).
+
 ## Guest
 
-`dword[0x200000] == 'KNDL'` (`0x4C444E4B`). Jump `0x200004`. Else `kindling: no guest at 0x200000`.
+`dword[0x200000] == 'KNDL'` (`0x4C444E4B`). Jump `0x200004`. Else `kindling: no guest at 0x200000`. Unchanged — the EFI and Limine paths hand over the same way.
 
 ## Traps
 

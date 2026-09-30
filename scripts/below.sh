@@ -4,14 +4,18 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 export PATH="${HOME}/.cargo/bin:$PATH"
+FW=fw/cerne-fw.bin
+DISK="-drive if=ide,format=raw,file=kindling.img"
+QEMU="${QEMU:-qemu-system-x86_64}"
 
 sh scripts/audit-kindle.sh
 
 echo "---- trap6 ----"
 make -C kernel trap6-bin
-make flint
-got=$(timeout --foreground --signal=KILL 3 qemu-system-x86_64 -M pc -m 256M \
-  -bios fw/cerne-fw.bin -device loader,file=kernel/kernel.trap.bin,addr=0x200000 \
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.trap.bin --out kindling-trap.img
+got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
+  -bios "$FW" -drive if=ide,format=raw,file=kindling-trap.img \
   -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
 printf '%s\n' "$got" | grep -F -q "kindling: trap 6" || {
   echo "FAIL trap6"
@@ -21,12 +25,14 @@ printf '%s\n' "$got" | grep -F -q "kindling: trap 6" || {
 echo "ok   trap6"
 # restore a non-trap kernel for later steps
 make steel >/dev/null
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling.img
 
 echo "---- fmap-bad ----"
-nasm -f bin -DAUDIT_BAD_FMAP -o fw/cerne-fw.bin fw/cerne-fw.asm
-python3 scripts/romsum.py fw/cerne-fw.bin
-got=$(timeout --foreground --signal=KILL 3 qemu-system-x86_64 -M pc -m 256M \
-  -bios fw/cerne-fw.bin -device loader,file=kernel/kernel.fw.bin,addr=0x200000 \
+nasm -f bin -DAUDIT_BAD_FMAP -o "$FW" fw/cerne-fw.asm
+python3 scripts/romsum.py "$FW"
+got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
+  -bios "$FW" $DISK \
   -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
 printf '%s\n' "$got" | grep -F -q "the well ran dry" || {
   echo "FAIL fmap-bad"
@@ -34,14 +40,14 @@ printf '%s\n' "$got" | grep -F -q "the well ran dry" || {
   exit 1
 }
 echo "ok   fmap-bad"
-nasm -f bin -o fw/cerne-fw.bin fw/cerne-fw.asm
-python3 scripts/romsum.py fw/cerne-fw.bin
+nasm -f bin -o "$FW" fw/cerne-fw.asm
+python3 scripts/romsum.py "$FW"
 
 echo "---- fw-trap ----"
-nasm -f bin -DAUDIT_FW_TRAP -o fw/cerne-fw.bin fw/cerne-fw.asm
-python3 scripts/romsum.py fw/cerne-fw.bin
-got=$(timeout --foreground --signal=KILL 3 qemu-system-x86_64 -M pc -m 256M \
-  -bios fw/cerne-fw.bin -device loader,file=kernel/kernel.fw.bin,addr=0x200000 \
+nasm -f bin -DAUDIT_FW_TRAP -o "$FW" fw/cerne-fw.asm
+python3 scripts/romsum.py "$FW"
+got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
+  -bios "$FW" $DISK \
   -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
 printf '%s\n' "$got" | grep -F -q "cerne-fw: trap" || {
   echo "FAIL fw-trap"
@@ -49,8 +55,26 @@ printf '%s\n' "$got" | grep -F -q "cerne-fw: trap" || {
   exit 1
 }
 echo "ok   fw-trap"
-nasm -f bin -o fw/cerne-fw.bin fw/cerne-fw.asm
-python3 scripts/romsum.py fw/cerne-fw.bin
+nasm -f bin -o "$FW" fw/cerne-fw.asm
+python3 scripts/romsum.py "$FW"
+
+echo "---- kmap-bad ----"
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling-bad.img --bad
+got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
+  -bios "$FW" -drive if=ide,format=raw,file=kindling-bad.img \
+  -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
+printf '%s\n' "$got" | grep -F -q "bad kmap" || {
+  echo "FAIL kmap-bad"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "no guest at 0x200000" || {
+  echo "FAIL kmap-bad (no refusal line)"
+  echo "$got" | tail -12
+  exit 1
+}
+echo "ok   kmap-bad"
 
 echo "---- efi ----"
 make efi >/dev/null
@@ -60,7 +84,7 @@ cp -f kernel/BOOTX64.EFI esp/EFI/BOOT/
 VARS=$(ls /usr/share/edk2/x64/OVMF_VARS.4m.fd /usr/share/edk2/x64/OVMF_VARS.fd 2>/dev/null | head -1)
 CODE=$(ls /usr/share/edk2/x64/OVMF_CODE.4m.fd /usr/share/edk2/x64/OVMF_CODE.fd 2>/dev/null | head -1)
 cp -f "$VARS" ovmf_vars.fd
-got=$(timeout --foreground --signal=KILL 12 qemu-system-x86_64 -M q35 -m 256M -display none \
+got=$(timeout --foreground --signal=KILL 12 "$QEMU" -M q35 -m 256M -display none \
   -serial stdio -no-reboot \
   -drive if=pflash,format=raw,unit=0,readonly=on,file="$CODE" \
   -drive if=pflash,format=raw,unit=1,file=ovmf_vars.fd \

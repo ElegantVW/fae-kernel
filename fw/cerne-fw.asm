@@ -1,4 +1,6 @@
-; cerne-fw — firmware + loader fused. 64KiB at 0xF0000.
+; cerne-fw — the firmware. 64KiB at 0xF0000. The loader is not fused any more:
+; we read it off the boot disk (LBA 1..32 -> 0x9000, 'LDOK' trailer proves the
+; slot landed) and hand over in long mode — ld/cerne-ld.asm, docs/FIRMWARE.md.
 ; First glyph: Lilac (VGA 13). We are the BIOS: no int 10h / 15h.
 
         bits    16
@@ -26,6 +28,15 @@ start:
         call    pic_init
         call    cmos_ram
         call    a20_fast
+
+        call    load_loader
+        jnc     .ld_ok
+        mov     si, msg_miss
+        call    puts16
+.hang16:
+        hlt
+        jmp     .hang16
+.ld_ok:
 
         lgdt    [gdt_ptr]
         mov     eax, cr0
@@ -359,6 +370,132 @@ a20_fast:
 .on:
         ret
 
+; --- load the loader: LBA 1..32 of the boot disk -> 0x9000.
+; The slot trailer 'LDOK' at 0xCFFC (written by scripts/mkimg.py) proves the
+; whole slot arrived. On failure this prints its own cause and returns CF=1;
+; the caller prints the house line and halts.
+load_loader:
+        push    es
+        push    di
+        push    si
+        push    bx
+        push    ax
+        xor     ax, ax
+        mov     es, ax                  ; dest ES:DI = 0000:9000
+        mov     bl, 3                   ; attempts
+.try:
+        mov     di, 0x9000
+        mov     dx, 0x1F6
+        mov     al, 0xE0                ; drive 0, LBA 27:24 = 0
+        out     dx, al
+        mov     dx, 0x3F6               ; 400ns settle
+        in      al, dx
+        in      al, dx
+        in      al, dx
+        in      al, dx
+        mov     dx, 0x1F7
+        in      al, dx
+        test    al, al
+        jz      .nodisk                 ; floating bus: nothing behind the port
+        cmp     al, 0xFF
+        je      .nodisk
+        mov     dx, 0x1F2
+        mov     al, 32                  ; the whole 16KiB slot
+        out     dx, al
+        mov     al, 1                   ; LBA 1
+        mov     dx, 0x1F3
+        out     dx, al
+        xor     al, al
+        mov     dx, 0x1F4
+        out     dx, al
+        mov     dx, 0x1F5
+        out     dx, al
+        mov     dx, 0x1F7
+        mov     al, 0x20                ; READ SECTORS
+        out     dx, al
+        mov     si, 32                  ; sectors left
+.sector:
+        call    ata_poll16
+        jc      .fail
+        mov     cx, 256
+        mov     dx, 0x1F0
+        cld
+.word:
+        in      ax, dx
+        stosw
+        loop    .word
+        dec     si
+        jnz     .sector
+        cmp     dword [es:0xCFFC], 0x4B4F444C   ; 'LDOK'
+        jne     .nomarker
+        pop     ax
+        pop     bx
+        pop     si
+        pop     di
+        pop     es
+        clc
+        ret
+.fail:
+        dec     bl
+        jz      .nodisk
+        mov     dx, 0x3F6               ; SRST the channel, retry
+        mov     al, 0x04
+        out     dx, al
+        in      al, dx
+        in      al, dx
+        xor     al, al
+        out     dx, al
+        jmp     .try
+.nomarker:
+        mov     si, msg_noloader
+        call    puts16
+        jmp     .done
+.nodisk:
+        mov     si, msg_nodisk
+        call    puts16
+.done:
+        pop     ax
+        pop     bx
+        pop     si
+        pop     di
+        pop     es
+        stc
+        ret
+
+; --- ata_poll16: wait for the next sector. CF = 1 on timeout / ERR / DF.
+ata_poll16:
+        push    ax
+        push    bx
+        push    cx
+        mov     bx, 64                  ; ~4M polls: spin-up is slow on metal
+.outer:
+        mov     cx, 0xFFFF
+.wait:
+        mov     dx, 0x1F7
+        in      al, dx
+        test    al, 0x80                ; BSY
+        jnz     .again
+        test    al, 0x21                ; ERR | DF
+        jnz     .bad
+        test    al, 0x08                ; DRQ
+        jnz     .ok
+.again:
+        loop    .wait
+        dec     bx
+        jnz     .outer
+.bad:
+        pop     cx
+        pop     bx
+        pop     ax
+        stc
+        ret
+.ok:
+        pop     cx
+        pop     bx
+        pop     ax
+        clc
+        ret
+
         bits    32
 pm32:
         mov     ax, 0x10
@@ -568,17 +705,8 @@ lm64:
         loop    .fill64b
         lidt    [idt64_ptr + 0xF0000]
 
-        mov     rsi, 0xF0000 + msg_ld
-        call    puts64
-        cmp     dword [0x200000], 0x4C444E4B
-        je      .have
-        mov     rsi, 0xF0000 + msg_miss
-        call    puts64
-.hang:
-        hlt
-        jmp     .hang
-.have:
-        mov     rax, 0x200004
+        ; the loader is a guest now: it earned the jump (ld/cerne-ld.asm)
+        mov     rax, 0x9000
         jmp     rax
 
 trap64_stubs:
@@ -652,7 +780,8 @@ putc64:
 
 msg_ansi:    db 27, "[95m", 0
 msg_fw:      db "cerne-fw", 10, 0
-msg_ld:      db "cerne-ld", 10, 0
+msg_nodisk:  db "cerne-fw: no disk", 10, 0
+msg_noloader: db "cerne-fw: no loader", 10, 0
 msg_miss:    db "kindling: no guest at 0x200000", 10, 0
 msg_fw_trap: db "cerne-fw: trap ", 0
              db "kindling remembers the reset", 0

@@ -4,6 +4,9 @@
 /kernel/kernel.trap.bin
 /kernel/BOOTX64.EFI
 /fw/cerne-fw.bin
+/ld/cerne-ld.bin
+/kindling.img
+/kindling-*.img
 /esp/
 /ovmf_vars.fd
 /limine/

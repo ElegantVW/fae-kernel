@@ -1,26 +1,47 @@
 # Boot — the column
 
 ```
-firmware (cerne-fw.asm) → loader (fused, same ROM) → kernel (start)
-someone else's UEFI     → our BOOTX64.EFI          → start
+firmware (cerne-fw.asm) → loader (cerne-ld, LBA 1..32 of the disk) → kernel (start)
+someone else's UEFI     → our BOOTX64.EFI                          → start
 ```
 
 Limine remains an optional hybrid ISO until you get bored of it.
 
 ## Our firmware (`make serial-fw`)
 
-QEMU `-bios fw/cerne-fw.bin` (64KiB, reset at `0xFFFF0`). Serial:
+QEMU `-bios fw/cerne-fw.bin` (64KiB, reset at `0xFFFF0`) with the boot disk
+(`kindling.img`, cast by `make image`). Serial:
 
 ```
 cerne-fw
 cerne-ld
 fae-kernel
-cerne: still only a spark
+kindling: still only a spark
 ```
 
-No Limine. No OVMF. Kernel at `0x200000` must begin `KNDL`. RAM size is CMOS (this ROM *is* the BIOS — there is no `int 0x15`). First glyph is Lilac (VGA 13 + serial `ESC[95m`). `make hearth-see` opens a window.
+No Limine. No OVMF. No `-device loader` — nothing is cheated into RAM. The
+chain earns every byte:
 
-The hand path is blessed: `nasm -f bin fw/cerne-fw.asm -o fw/cerne-fw.bin` then QEMU `-bios` as in `make kindle`. Same fire. `strings` on the ROM hides two murmurs (`kindling remembers the reset`, `the jump is the vow`) — they do not print on serial.
+1. **firmware** reads LBA 1..32 of the disk to `0x9000` and checks the slot
+   trailer `'LDOK'` that `scripts/mkimg.py` writes at the slot's end.
+2. **loader** (`ld/cerne-ld.asm`, self-contained: own ATA PIO, own serial)
+   reads the KMAP (LBA 0), loads the kernel straight to `0x200000`, checks
+   its XOR and `'KNDL'`, jumps `0x200004`.
+
+Disk: `LBA 0` KMAP · `LBA 1..32` loader (16KiB slot) · `LBA 33..` kernel.
+Contracts in `docs/FIRMWARE.md`. RAM size is CMOS (this ROM *is* the BIOS —
+there is no `int 0x15`). First glyph is Lilac (VGA 13 + serial `ESC[95m`).
+`make hearth-see` opens a window.
+
+The hand path is blessed: `nasm -f bin fw/cerne-fw.asm -o fw/cerne-fw.bin`,
+`nasm -f bin ld/cerne-ld.asm -o ld/cerne-ld.bin`, `make steel`, then
+`python3 scripts/mkimg.py` and QEMU `-bios … -drive if=ide,…` as in
+`make kindle`. Same fire. `strings` on the ROM hides two murmurs (`kindling
+remembers the reset`, `the jump is the vow`) — they do not print on serial.
+
+On q35 there is no legacy IDE behind `0x1F0`; attach one (`-device
+piix3-ide …`, see `scripts/audit-kindle.sh`) or the firmware honestly reports
+`cerne-fw: no disk`. On pc the chipset already has the ports.
 
 ## Our EFI (`make serial-uefi`)
 

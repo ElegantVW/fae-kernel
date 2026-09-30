@@ -16,6 +16,26 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-09-30 — Gleed — full sweep, phase-1 held (audit + lints + doc truth)
+
+- Did: Full sweep, phase-1 only (no ELF / `write` / `exit`). Audit: `audit ok` + `below ok` re-verified; disk image re-checked (KMAP checksum, `'LDOK'` trailer, `'KNDL'` head). Diagnose: doc drift (`BOOT.md` spark line), duplicated cup warning (`FIRMWARE.md`), `.gitignore` missing `ld/*.bin` + `kindling*.img`, `cargo fmt --check` fail, `clippy -D warnings` fail on 3 bins. Fix (behaviour-preserving): `BOOT.md` → `kindling: still only a spark`; dedup cup warning; `.gitignore` += `/ld/cerne-ld.bin`, `/kindling.img`, `/kindling-*.img`; `start.rs` `COM1 + 0` → `COM1`; `cargo fmt`; collapse nested `if let` in `main.rs` + `efi_main.rs`. Improve: all 3 clippy targets clean now. Upgrade audit: `uefi 0.35.0` pinned vs `0.41.0` latest, `limine 0.5.0` crutch — deferred deliberately to keep phase-1 green (EFI ABI churn, no need). Intentional, not bugs: EFI `ram_end` capped `1<<30` (`efi_main.rs`) vs FW `0x1_0000_0000` (`mm.rs`) — EFI avoids PCI hole, FW probes CMOS; IDT 32–255 alias first-32 stubs (`idt.rs`) with PIC masked; `nasm -w+all` abs-reloc warnings are flat-ROM `default abs` by design.
+- Proof: `sh scripts/audit-kindle.sh` → `kindling: audit ok` (256M/8M/4M/1G/none/wrong/lilac/q35). `sh scripts/below.sh` → `kindling: below ok` (audit+trap6+fmap-bad+fw-trap+kmap-bad+efi) after fixes. `cargo fmt --check` clean; `cargo clippy -D warnings` clean for `fae-kernel` + `fae-kernel-fw --features fw-link` + `cerne-efi --features efi`. Happy serial still `cerne-fw / cerne-ld / fae-kernel / kindling: still only a spark / well 256 MiB`.
+- Git: this tree, local. Modified: `.gitignore`, `docs/BOOT.md`, `docs/FIRMWARE.md`, `kernel/src/{start,main,efi_main,fw_main}.rs`. Pre-existing dirty (seal 2026-09-28 real-chain: `GNUmakefile`, `README`, `docs/*`, `fw/*`, `scripts/*`, untracked `ld/`, `scripts/mkimg.py`) still uncommitted — not pushed, per law. `kindling*.img` now ignored, no longer noise.
+- Next: commit seal+Gleed as one phase-1 checkpoint when Gil says so; then phase 2 only on Gil's word. Optional later: `scripts/*` surface errors instead of `>/dev/null` on `steel`; `cargo audit` / `cargo outdated` gate when network allowed.
+- Do not: open phase 2 (ELF / syscalls); bump `uefi`/`limine` majors to chase latest; unify EFI/FW caps without QEMU-iron proof; push.
+
+---
+
+## 2026-09-28 — seal — the loader stands alone (real disk boot)
+
+- Did: Un-fused the loader. `fw/cerne-fw.asm` now reads **LBA 1..32** of the boot disk to `0x9000` (ATA PIO, SRST retries, floating-bus check) and trusts it only if the slot trailer `'LDOK'` landed at `0xCFFC`; then it hands over in long mode and jumps `0x9000`. `ld/cerne-ld.asm` (new — self-contained: own ATA PIO, own serial) reads the KMAP (disk LBA 0), loads the kernel straight to `0x200000` in 128-sector commands, checks its XOR **and** `'KNDL'`, jumps `0x200004`. `scripts/mkimg.py` casts `kindling.img` (KMAP · 16KiB loader slot · kernel at LBA 33) with `--bad` / `--wrong` for the gates. **`-device loader` is gone from every bowl** — nothing is cheated into RAM any more. KMAP + loader contract in `docs/FIRMWARE.md`; gates **G13** (real chain) and **G14** (bad KMAP refuses) in `docs/BELOW.md`. q35 needs `-device piix3-ide` for real ports behind `0x1F0`; pc already has them.
+- Proof: `make below` → `kindling: below ok` (256M 8M 4M 1G none wrong lilac q35 trap6 fmap-bad fw-trap **kmap-bad** efi). `make below-ten` → `kindling: below ten ok`. Happy path byte-for-byte the same transcript: `cerne-fw` / `cerne-ld` / `fae-kernel` / `kindling: still only a spark` / `kindling: well 256 MiB`.
+- Git: this tree, local. Not pushed — Flint's `Do not: push` still stands.
+- Next: a write path and a filesystem when the guest needs them; phase 2 (user ELF) still waits on Gil's word. Note the stop-line Flint drew (`Do not: … disk`) has moved: the real chain was asked for by name, and that call is Gil's — logged here so the line moves visibly and not by accident.
+- Do not: put the loader back in the ROM; jump without `'LDOK'` + `'KNDL'` + kernel XOR all three agreeing; leave a failure path that half-jumps.
+
+---
+
 ## 2026-09-24 — Flint — firmware contract, 4K low map, ROM sum, FMAP regions
 
 - Did: `docs/FIRMWARE.md`. IBM ROM checksum (last byte, `scripts/romsum.py`). FMAP v1: nreg=2, `0–0x9F000` and `1MiB–ram_end`. First 2 MiB as 4 KiB pages (PCD+PWT on `A0000–FFFFF`). Traps print a number (`cerne-fw: trap N`). Kernel checksum is `ram xor nreg xor KNDL`.

@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → fused loader → Kindling spark. **Phase 2 (ELF / syscalls) does not start until this file is boringly green.**
+Firmware → loader (off the disk) → Kindling spark. **Phase 2 (ELF / syscalls) does not start until this file is boringly green.**
 
 Run: `make below`  
 Ten times: `make below-ten`
@@ -21,7 +21,9 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G10 | Limine out of gate | crutch | **crutch** |
 | G11 | `make below` × 10 | `make below-ten` | **yes — ten ok** |
 | G12 | This file + Flint handoff | `docs/BELOW.md` | yes |
+| G13 | Real chain — no `-device loader`, every bowl boots `kindling.img` | `make below` | yes |
+| G14 | Bad KMAP refused and reported | kmap-bad in `make below` | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`.
 
-Out of gate: disk, SMP APs, LA57 well, trap recover, real iron besides QEMU.
+Out of gate: storage beyond boot reads (writes, filesystems), SMP APs, LA57 well, trap recover, real iron besides QEMU.

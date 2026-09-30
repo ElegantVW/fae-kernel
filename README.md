@@ -18,9 +18,10 @@ text (font RAM stays empty) — hence background + cursor. Mark: `docs/identity/
 
 ## What this is
 
-The column: **firmware (asm) → loader (fused in the same ROM) → kernel (Rust)**. Linux syscall ABI table is empty today (`docs/syscalls.md` — every entry `missing`, a missing syscall returns `ENOSYS`).
+The column: **firmware (asm) → loader (asm, off the disk) → kernel (Rust)**. Linux syscall ABI table is empty today (`docs/syscalls.md` — every entry `missing`, a missing syscall returns `ENOSYS`).
 
-- `fw/cerne-fw.asm` (707 lines): 64KiB ROM, reset vector, GDT/IDT, VGA mode-3 by registers, PIC, CMOS RAM probe, 4K low pages + 2M rest, FMAP, `KNDL` guest check. Our BIOS: no `int 10h` / `int 15h`.
+- `fw/cerne-fw.asm`: 64KiB ROM, reset vector, GDT/IDT, VGA mode-3 by registers, PIC, CMOS RAM probe, 4K low pages + 2M rest, FMAP, ATA PIO — reads the loader from the boot disk (LBA 1..32, `'LDOK'` trailer) and hands over in long mode. Our BIOS: no `int 10h` / `int 15h`.
+- `ld/cerne-ld.asm`: the loader, self-contained (own ATA PIO, own serial). Reads the KMAP (LBA 0), loads the kernel straight to `0x200000`, checks its XOR and `KNDL`, jumps `0x200004`. `scripts/mkimg.py` casts the disk (`make image`).
 - `kernel/src/`: `no_std` crate — `start`, `mm` (own page tables, bump well, cup-stack), `gdt`, `idt`, `cpu` (FPU/SSE, PIC), `fw_main` (BIOS path), `efi_main` (our `BOOTX64.EFI`), Limine entry.
 - Borrowed, attributed, not vendored: Limine bootloader (`v10.x-binary`, cloned at build) and OVMF/EDK2 (host QEMU firmware). The paved path (`make kindle`) uses neither.
 

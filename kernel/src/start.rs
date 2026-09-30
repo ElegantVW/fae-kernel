@@ -26,7 +26,7 @@ pub fn serial_init() {
     unsafe {
         outb(COM1 + 1, 0x00);
         outb(COM1 + 3, 0x80);
-        outb(COM1 + 0, 0x03);
+        outb(COM1, 0x03);
         outb(COM1 + 1, 0x00);
         outb(COM1 + 3, 0x03);
         outb(COM1 + 2, 0xC7);

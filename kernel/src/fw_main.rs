@@ -10,7 +10,7 @@ mod start;
 
 use core::fmt::Write;
 use mm::Hint;
-use start::{serial_print, start, Serial};
+use start::{Serial, serial_print, start};
 
 unsafe extern "C" {
     static __kernel_end: u8;

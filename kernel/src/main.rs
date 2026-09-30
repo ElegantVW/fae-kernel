@@ -12,7 +12,7 @@ use core::fmt::Write;
 use limine::BaseRevision;
 use limine::request::{FramebufferRequest, RequestsEndMarker, RequestsStartMarker};
 
-use start::{paint_mark, serial_print, start, Serial};
+use start::{Serial, paint_mark, serial_print, start};
 
 #[used]
 #[unsafe(link_section = ".requests")]
@@ -38,10 +38,10 @@ unsafe extern "C" fn kmain() -> ! {
         serial_print("limine revision not supported\n");
         start::hcf();
     }
-    if let Some(resp) = FRAMEBUFFER_REQUEST.get_response() {
-        if let Some(fb) = resp.framebuffers().next() {
-            paint_mark(fb.addr(), fb.width(), fb.height(), fb.pitch(), fb.bpp());
-        }
+    if let Some(resp) = FRAMEBUFFER_REQUEST.get_response()
+        && let Some(fb) = resp.framebuffers().next()
+    {
+        paint_mark(fb.addr(), fb.width(), fb.height(), fb.pitch(), fb.bpp());
     }
     start(None)
 }
