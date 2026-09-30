@@ -11,6 +11,7 @@ pub const STACK_MANA: u64 = 64 * 1024; // cup
 
 const P: u64 = 1;
 const RW: u64 = 2;
+const US: u64 = 1 << 2;
 const PS: u64 = 1 << 7;
 
 pub struct Hint {
@@ -99,20 +100,22 @@ pub unsafe fn prepare_well(hint: Hint) -> Well {
     let pml4 = bump.table();
     let pdpt = bump.table();
     unsafe {
-        (*pml4)[0] = pdpt as u64 | P | RW;
+        (*pml4)[0] = pdpt as u64 | P | RW | US;
     }
 
     let mut virt = 0u64;
     let mut gb = 0usize;
+    // Realms shut (init first): every page U/S so CPL3 can fetch the shared
+    // image + stacks. Future realms clear US per-address-space.
     while virt < ram_end && gb < 512 {
         let pd = bump.table();
         unsafe {
-            (*pdpt)[gb] = pd as u64 | P | RW;
+            (*pdpt)[gb] = pd as u64 | P | RW | US;
             for i in 0..512 {
                 if virt >= ram_end {
                     break;
                 }
-                (*pd)[i] = virt | P | RW | PS;
+                (*pd)[i] = virt | P | RW | US | PS;
                 virt += BIG;
             }
         }

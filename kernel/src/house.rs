@@ -1,8 +1,6 @@
 //! House calls — Gleam's own gate (`int 0xE0`). Not Linux.
 //! Numbers survive the future `syscall/sysret` upgrade.
 
-use core::arch::asm;
-
 use crate::start::{hcf, serial_print, serial_u64};
 
 pub const YIELD: u64 = 0;
@@ -38,15 +36,6 @@ fn write_serial(buf: *const u8, len: u64) -> u64 {
     done
 }
 
-fn rdtsc() -> u64 {
-    let lo: u32;
-    let hi: u32;
-    unsafe {
-        asm!("rdtsc", out("eax") lo, out("edx") hi, options(nomem, nostack, preserves_flags));
-    }
-    ((hi as u64) << 32) | (lo as u64)
-}
-
 /// Kernel dispatcher. Pure + testable: no asm here, `int 0xE0` stub calls
 /// [`house_entry`] which forwards here.
 pub fn dispatch(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
@@ -66,10 +55,10 @@ pub fn dispatch(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
             }
         }
         SLEEP => {
-            let _ = a0;
+            crate::timer::sleep_ms(a0);
             0
         }
-        TIME => rdtsc(),
+        TIME => crate::timer::ms(),
         SPAWN | GRANT | FLUSH => err(EAGAIN),
         _ => err(ENOSYS),
     }
@@ -86,6 +75,7 @@ pub extern "C" fn house_entry(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
 /// On success returns; on failure halts (never returns).
 #[cfg(feature = "house-test")]
 pub fn self_test() {
+    use core::arch::asm;
     // Direct: yield ok, unknown refuses, wrong fd refuses, shut calls wait.
     let mut fail = 0u64;
     if dispatch(YIELD, 0, 0, 0) != 0 {
@@ -149,4 +139,67 @@ pub fn self_test() {
         hcf();
     }
     serial_print("kindling: house ok\n");
+}
+
+// --- Ring-3 init: the first Gleam light. Speaks only via `int 0xE0`. ---
+#[cfg(feature = "ring3-test")]
+core::arch::global_asm!(
+    ".global gleam_init",
+    "gleam_init:",
+    "mov rax, 2",
+    "mov rdi, 1",
+    "lea rsi, [rip + 2f]",
+    "mov edx, 18",
+    "int 0xE0",
+    "xor eax, eax",
+    "int 0xE0",
+    "mov rax, 1",
+    "xor edi, edi",
+    "int 0xE0",
+    "ud2",
+    "2:",
+    ".ascii \"kindling: init ok\\n\"",
+    "4:",
+);
+
+#[cfg(feature = "ring3-test")]
+static mut USTACK: [u8; 16384] = [0; 16384];
+
+#[cfg(feature = "ring3-test")]
+unsafe extern "C" {
+    fn gleam_init();
+}
+
+/// Drop to CPL3 at `gleam_init` on a private stack. RSP0 already points
+/// at the kernel cup, so CPL3 interrupts land home. Never returns.
+#[cfg(feature = "ring3-test")]
+pub fn enter_init(cup_top: u64) -> ! {
+    crate::gdt::set_kernel_stack(cup_top);
+    let ustack_top = (core::ptr::addr_of!(USTACK) as u64 + 16384) & !0xF;
+    unsafe {
+        // NOTE: ustack_top rides in R10 and the entry in R11 — never
+        // `in(reg)` (it may pick RSP), and never `push {sym}` (that pushes
+        // the qword AT the symbol; there is no push-imm64).
+        core::arch::asm!(
+            "mov ax, 0x23",
+            "mov ds, ax",
+            "mov es, ax",
+            "xor eax, eax",
+            "mov fs, ax",
+            "mov gs, ax",
+            "lea r11, [rip + {init}]",
+            "push {ss}",
+            "push r10",
+            "push {rflags}",
+            "push {cs}",
+            "push r11",
+            "iretq",
+            ss = const crate::gdt::UDATA_RPL3,
+            rflags = const 0x202u64,
+            cs = const crate::gdt::UCODE_RPL3,
+            init = sym gleam_init,
+            in("r10") ustack_top,
+            options(noreturn),
+        );
+    }
 }

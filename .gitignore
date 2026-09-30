@@ -3,6 +3,7 @@
 /kernel/kernel.fw.bin
 /kernel/kernel.trap.bin
 /kernel/kernel.house.bin
+/kernel/kernel.ring3.bin
 /kernel/BOOTX64.EFI
 /fw/cerne-fw.bin
 /ld/cerne-ld.bin

@@ -115,6 +115,9 @@ pub fn start(hint: Option<Hint>) -> ! {
         crate::gdt::install();
     }
     crate::idt::install();
+    if matches!(&hint, Some(h) if !h.trust_map) {
+        crate::timer::init();
+    }
     crate::cpu::enable_fpu_sse();
     #[cfg(feature = "trap6")]
     unsafe {
@@ -135,6 +138,7 @@ pub fn start(hint: Option<Hint>) -> ! {
             core::ptr::addr_of_mut!(WELL_MIB).write(mm::well_mib(well.ram_end));
             core::ptr::addr_of_mut!(CUP_KIB).write(mm::cup_kib(well.stack));
             core::ptr::addr_of_mut!(CANARY_AT).write(well.canary_at);
+            core::ptr::addr_of_mut!(CUP_TOP).write(well.top);
             asm!(
                 "mov rsp, {top}",
                 "mov cr3, {cr3}",
@@ -152,6 +156,7 @@ pub fn start(hint: Option<Hint>) -> ! {
 static mut WELL_MIB: u64 = 0;
 static mut CUP_KIB: u64 = 0;
 static mut CANARY_AT: u64 = 0;
+static mut CUP_TOP: u64 = 0;
 
 #[inline(never)]
 unsafe extern "C" fn after_cup() -> ! {
@@ -166,6 +171,9 @@ unsafe extern "C" fn after_cup() -> ! {
     serial_print(" MiB · stack ");
     serial_u64(unsafe { core::ptr::addr_of!(CUP_KIB).read() });
     serial_print(" KiB cup\n");
+    #[cfg(feature = "ring3-test")]
+    crate::house::enter_init(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
+    #[cfg(not(feature = "ring3-test"))]
     hcf();
 }
 

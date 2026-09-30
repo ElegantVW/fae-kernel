@@ -7,6 +7,7 @@ mod house;
 mod idt;
 mod mm;
 mod start;
+mod timer;
 
 use core::fmt::Write;
 

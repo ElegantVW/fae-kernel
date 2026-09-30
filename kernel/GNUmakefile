@@ -38,10 +38,15 @@ house-bin:
 		$(CARGO) build --target $(RUST_TARGET) --bin fae-kernel-fw --features fw-link,house-test --profile $(RUST_PROFILE)
 	$(OBJCOPY) -O binary $(NONE_DIR)/fae-kernel-fw kernel.house.bin
 
+ring3-bin:
+	RUSTFLAGS="-C relocation-model=static" \
+		$(CARGO) build --target $(RUST_TARGET) --bin fae-kernel-fw --features fw-link,house-test,ring3-test --profile $(RUST_PROFILE)
+	$(OBJCOPY) -O binary $(NONE_DIR)/fae-kernel-fw kernel.ring3.bin
+
 efi:
 	$(CARGO) build --target $(UEFI_TARGET) --bin cerne-efi --features efi --profile $(RUST_PROFILE)
 	cp -v $(UEFI_DIR)/cerne-efi.efi BOOTX64.EFI
 
 clean:
 	$(CARGO) clean
-	rm -f kernel kernel.fw.bin kernel.trap.bin kernel.house.bin BOOTX64.EFI
+	rm -f kernel kernel.fw.bin kernel.trap.bin kernel.house.bin kernel.ring3.bin BOOTX64.EFI

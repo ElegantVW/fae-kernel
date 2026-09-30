@@ -21,13 +21,24 @@ Swift, purposeful, direct — no noise. Unknown refuses, never silently succeeds
 | 0 | `yield` | — | `0` | done (co-op stub) |
 | 1 | `exit` | `rdi` = code | never | done (`kindling: gleam exit N` + `hlt`) |
 | 2 | `write` | `rdi` = fd, `rsi` = buf, `rdx` = len | bytes or `-errno` | done on fd 1/2 serial; other fd → `-EPERM`; len capped 1 MiB; null buf → `-EPERM` |
-| 3 | `sleep` | `rdi` = ms | `0` | stub (no timer yet, returns at once — honest stub, not a lie about time) |
-| 4 | `time` | — | `rdtsc` ticks | done (raw ticks, not ms — `ms` waits on timer) |
+| 3 | `sleep` | `rdi` = ms | `0` | done on BIOS (PIT 100 Hz block); stub elsewhere (returns at once) |
+| 4 | `time` | — | ms | done: PIT ms on BIOS, raw `rdtsc` fallback on EFI/crutch |
 | 5 | `spawn` | — | `-EAGAIN` | shut (needs ELF + realms) |
 | 6 | `grant` | — | `-EAGAIN` | shut (needs capabilities) |
 | 7 | `flush` | — | `-EAGAIN` | shut (needs Lantern framebuffer) |
 
 Anything else → `-ENOSYS`.
+
+## Ring-3 init (first Gleam light)
+
+`gleam_init` (in-kernel, CPL3): `write` → `yield` → `exit(0)` via `int 0xE0`.
+Entry via `iretq` (`SS/RSP/RFLAGS/CS/RIP` = `0x23` / private 16 KiB stack /
+`0x202` / `0x1B` / `gleam_init`). GDT carries UCODE `0x18` / UDATA `0x20` (DPL 3)
++ TSS `0x28` (RSP0 = kernel cup, IST1 = double-fault stack); all pages U/S
+while realms are shut; PIT IRQ0 ticks; #DF rides IST1. Two inline-asm laws
+this gate paid for: entry addresses ride fixed regs (never `in(reg)`, which
+may pick RSP), and symbol addresses load via `lea` (there is no push-imm64 —
+`push {sym}` pushes the qword AT the symbol).
 
 ## Test
 

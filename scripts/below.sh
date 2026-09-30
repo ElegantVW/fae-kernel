@@ -51,6 +51,29 @@ make steel >/dev/null
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
   --kernel kernel/kernel.fw.bin --out kindling.img
 
+echo "---- ring3 ----"
+make -C kernel ring3-bin
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.ring3.bin --out kindling-ring3.img
+got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
+  -bios "$FW" -drive if=ide,format=raw,file=kindling-ring3.img \
+  -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
+printf '%s\n' "$got" | grep -F -q "kindling: init ok" || {
+  echo "FAIL ring3"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "kindling: gleam exit 0" || {
+  echo "FAIL ring3 (no gleam exit 0)"
+  echo "$got" | tail -12
+  exit 1
+}
+echo "ok   ring3"
+# restore the paved kernel for later steps
+make steel >/dev/null
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling.img
+
 echo "---- fmap-bad ----"
 nasm -f bin -DAUDIT_BAD_FMAP -o "$FW" fw/cerne-fw.asm
 python3 scripts/romsum.py "$FW"

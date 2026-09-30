@@ -8,6 +8,8 @@ use crate::start::{hcf, serial_print, serial_u64};
 
 /// House-call vector. User may knock (`DPL 3`).
 pub const HOUSE_VEC: usize = 0xE0;
+/// PIT IRQ0 vector (BIOS path).
+pub const TIMER_VEC: usize = 0x20;
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
@@ -81,6 +83,29 @@ macro_rules! vecs {
             "pop rsi\n",
             "pop rdi\n",
             "iretq\n",
+            // PIT tick: IRQ0. Preserve everything, count, return.
+            ".global vec_timer\n",
+            "vec_timer:\n",
+            "push rax\n",
+            "push rcx\n",
+            "push rdx\n",
+            "push rsi\n",
+            "push rdi\n",
+            "push r8\n",
+            "push r9\n",
+            "push r10\n",
+            "push r11\n",
+            "call timer_tick\n",
+            "pop r11\n",
+            "pop r10\n",
+            "pop r9\n",
+            "pop r8\n",
+            "pop rdi\n",
+            "pop rsi\n",
+            "pop rdx\n",
+            "pop rcx\n",
+            "pop rax\n",
+            "iretq\n",
         );
     };
 }
@@ -92,6 +117,7 @@ vecs!(
 
 unsafe extern "C" {
     fn vec_house();
+    fn vec_timer();
     fn vec_0();
     fn vec_1();
     fn vec_2();
@@ -196,6 +222,19 @@ fn gate_user(off: u64) -> IdtEntry {
     }
 }
 
+/// Same as [`gate`] but on IST `ist` (1–7). Double-fault rides IST1.
+fn gate_ist(off: u64, ist: u8) -> IdtEntry {
+    IdtEntry {
+        off_lo: off as u16,
+        selector: current_cs(),
+        ist: ist & 7,
+        flags: 0x8E,
+        off_mid: (off >> 16) as u16,
+        off_hi: (off >> 32) as u32,
+        zero: 0,
+    }
+}
+
 #[unsafe(no_mangle)]
 extern "C" fn trap_named(n: u64) -> ! {
     serial_print("kindling: trap ");
@@ -215,6 +254,10 @@ pub fn install() {
         }
         // The house gate earns its own stub — no aliasing to a trap.
         (*idt)[HOUSE_VEC] = gate_user(vec_house as *const () as u64);
+        // PIT tick earns its own stub too (else IRQ0 wears trap 0's name).
+        (*idt)[TIMER_VEC] = gate(vec_timer as *const () as u64);
+        // Double-fault rides IST1 (gdt TSS) so a blown stack still speaks.
+        (*idt)[8] = gate_ist(s[8] as u64, 1);
         let ptr = IdtPtr {
             limit: (size_of::<[IdtEntry; 256]>() - 1) as u16,
             base: core::ptr::addr_of!(IDT) as u64,

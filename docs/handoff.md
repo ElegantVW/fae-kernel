@@ -16,6 +16,16 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-09-30 — Gleed — ring-3 init (first Gleam light, G16)
+
+- Did: CPL3 `gleam_init` speaking only house calls (`write` → `yield` → `exit(0)` via `int 0xE0`). `gdt.rs`: UCODE `0x18` / UDATA `0x20` (DPL 3) + TSS `0x28` (RSP0 = cup top, IST1 = 8 KiB #DF stack, `ltr`). `mm.rs`: all pages U/S while realms shut (PML4 + PDPT + 2M PD). `timer.rs` (new): PIT 100 Hz, IRQ0 unmasked on BIOS only; `sleep` blocks / `time` = ms there, stub + `rdtsc` fallback on EFI/crutch. `idt.rs`: `vec_timer` (`0x20`, EOI), #DF on IST1. `house.rs`: `enter_init` via `iretq` (fixed-reg frame, `LEA` entry). `below.sh` += `ring3` step (G16). Two asm laws paid for and written into `HOUSECALLS.md`: fixed regs for addresses (never `in(reg)` for the pushed RSP), `lea` for symbol addresses (no push-imm64).
+- Proof: `kindling-ring3.img` boots `cerne-fw / cerne-ld / fae-kernel / still only a spark / ok / house ok / well 256 MiB / kindling: init ok / kindling: gleam exit 0`. `sh scripts/below.sh` → `below ok` (audit+trap6+house+**ring3**+fmap-bad+fw-trap+kmap-bad+efi). `fmt` + `clippy -D warnings` clean (fw, house, ring3, limine, efi). QEMU `-d int` proved the two faults on the way: `in(reg)` picking RSP (frame garbage) and `push {sym}` pushing code bytes.
+- Git: this tree, local. Modified/added: `kernel/src/{gdt,mm,timer,idt,house,start,main,fw_main,efi_main}.rs`, `kernel/{Cargo.toml,GNUmakefile}`, `scripts/below.sh`, `.gitignore`, `docs/{HOUSECALLS,BELOW,README}.md`.
+- Next: timer-proof `sleep` test from CPL3; `syscall/sysret` for speed (numbers survive); realms/grant (per-address U/S); FS write + exec-from-disk; Lantern flush.
+- Do not: map user pages supervisor-only again; let `in(reg)` near `push rsp`; trust `push {sym}` for an address.
+
+---
+
 ## 2026-09-30 — Gleed — house-call first (Gleam gate v0, `int 0xE0`)
 
 - Did: Gleam-only house calls, house-call first. New `docs/HOUSECALLS.md` (gate `0xE0` DPL 3, `rax`=n `rdi/rsi/rdx`=args, `-errno` honesty: `38` unknown / `1` refused / `11` not-ready). New `kernel/src/house.rs` (`yield` 0 / `exit` 1 / `write` 2 on fd 1-2 serial capped 1 MiB / `sleep` 3 stub / `time` 4 `rdtsc` + shut `spawn` 5 / `grant` 6 / `flush` 7 → `-EAGAIN`). `idt.rs`: `vec_house` stub (preserve, shuffle to SysV, `call house_entry`, `iretq`), `0xE0` earns `0xEE` DPL-3 gate (no trap alias). `house-test` feature + `house-bin` target: direct `dispatch()` + real `int 0xE0` knock, prints `kindling: house ok`; happy path silent (paved serial unchanged). Gate fortified: `below.sh` += `house` step (G15), `.gitignore` += `kernel.house.bin`, `BELOW.md` G15, `README` house row.
