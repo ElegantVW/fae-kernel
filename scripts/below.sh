@@ -1,5 +1,5 @@
 #!/bin/sh
-# Full below gate. No phase 2.
+# Full below gate + house gate (Gleam calls v0).
 set -eu
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -24,6 +24,29 @@ printf '%s\n' "$got" | grep -F -q "kindling: trap 6" || {
 }
 echo "ok   trap6"
 # restore a non-trap kernel for later steps
+make steel >/dev/null
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling.img
+
+echo "---- house ----"
+make -C kernel house-bin
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.house.bin --out kindling-house.img
+got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
+  -bios "$FW" -drive if=ide,format=raw,file=kindling-house.img \
+  -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
+printf '%s\n' "$got" | grep -F -q "kindling: house ok" || {
+  echo "FAIL house"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "well 256 MiB" || {
+  echo "FAIL house (no well line)"
+  echo "$got" | tail -12
+  exit 1
+}
+echo "ok   house"
+# restore the paved kernel for later steps
 make steel >/dev/null
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
   --kernel kernel/kernel.fw.bin --out kindling.img

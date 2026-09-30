@@ -3,6 +3,7 @@
 
 mod cpu;
 mod gdt;
+mod house;
 mod idt;
 mod mm;
 mod start;

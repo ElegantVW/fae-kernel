@@ -1,9 +1,13 @@
 //! 64-bit IDT. Vectors 0–31 name themselves. Selector is Kindling CS 0x08.
+//! Vector 0xE0 is the house gate (`int 0xE0`, DPL 3) — see docs/HOUSECALLS.md.
 
 use core::arch::asm;
 use core::mem::size_of;
 
 use crate::start::{hcf, serial_print, serial_u64};
+
+/// House-call vector. User may knock (`DPL 3`).
+pub const HOUSE_VEC: usize = 0xE0;
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
@@ -51,6 +55,32 @@ macro_rules! vecs {
             "call trap_named",
             "hlt",
             "jmp trap_common",
+            // House gate: `int 0xE0`. Entry: rax=n rdi=a0 rsi=a1 rdx=a2.
+            // Shuffle to SysV (rdi,rsi,rdx,rcx), keep rax for the return.
+            ".global vec_house\n",
+            "vec_house:\n",
+            "push rdi\n",
+            "push rsi\n",
+            "push rdx\n",
+            "push rcx\n",
+            "push r8\n",
+            "push r9\n",
+            "push r10\n",
+            "push r11\n",
+            "mov rcx, rdx\n",
+            "mov rdx, rsi\n",
+            "mov rsi, rdi\n",
+            "mov rdi, rax\n",
+            "call house_entry\n",
+            "pop r11\n",
+            "pop r10\n",
+            "pop r9\n",
+            "pop r8\n",
+            "pop rcx\n",
+            "pop rdx\n",
+            "pop rsi\n",
+            "pop rdi\n",
+            "iretq\n",
         );
     };
 }
@@ -61,6 +91,7 @@ vecs!(
 );
 
 unsafe extern "C" {
+    fn vec_house();
     fn vec_0();
     fn vec_1();
     fn vec_2();
@@ -152,6 +183,19 @@ fn gate(off: u64) -> IdtEntry {
     }
 }
 
+/// House gate: present + DPL 3 interrupt gate so ring 3 may `int 0xE0`.
+fn gate_user(off: u64) -> IdtEntry {
+    IdtEntry {
+        off_lo: off as u16,
+        selector: current_cs(),
+        ist: 0,
+        flags: 0xEE,
+        off_mid: (off >> 16) as u16,
+        off_hi: (off >> 32) as u32,
+        zero: 0,
+    }
+}
+
 #[unsafe(no_mangle)]
 extern "C" fn trap_named(n: u64) -> ! {
     serial_print("kindling: trap ");
@@ -169,6 +213,8 @@ pub fn install() {
             let off = s[i.min(31)] as u64;
             (*idt)[i] = gate(off);
         }
+        // The house gate earns its own stub — no aliasing to a trap.
+        (*idt)[HOUSE_VEC] = gate_user(vec_house as *const () as u64);
         let ptr = IdtPtr {
             limit: (size_of::<[IdtEntry; 256]>() - 1) as u16,
             base: core::ptr::addr_of!(IDT) as u64,

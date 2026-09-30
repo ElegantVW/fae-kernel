@@ -23,7 +23,10 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G12 | This file + Flint handoff | `docs/BELOW.md` | yes |
 | G13 | Real chain — no `-device loader`, every bowl boots `kindling.img` | `make below` | yes |
 | G14 | Bad KMAP refused and reported | kmap-bad in `make below` | yes |
+| G15 | House gate — `int 0xE0` yield/write ok, unknown refuses | house in `make below` | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`.
+
+House calls (Gleam-only, not Linux): `docs/HOUSECALLS.md`. First set v0: `yield` / `exit` / `write(fd 1-2)` / `sleep`-stub / `time` + shut `spawn` / `grant` / `flush` (`-EAGAIN`). Happy serial unchanged; `house-test` image prints `kindling: house ok`.
 
 Out of gate: storage beyond boot reads (writes, filesystems), SMP APs, LA57 well, trap recover, real iron besides QEMU.

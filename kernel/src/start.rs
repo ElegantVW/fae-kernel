@@ -45,6 +45,13 @@ fn serial_put(b: u8) {
     }
 }
 
+pub(crate) fn serial_put_byte(b: u8) {
+    if b == b'\n' {
+        serial_put(b'\r');
+    }
+    serial_put(b);
+}
+
 pub struct Serial;
 
 impl Write for Serial {
@@ -152,6 +159,8 @@ unsafe extern "C" fn after_cup() -> ! {
         serial_print("kindling: the cup was bitten\n");
         hcf();
     }
+    #[cfg(feature = "house-test")]
+    crate::house::self_test();
     serial_print("kindling: well ");
     serial_u64(unsafe { core::ptr::addr_of!(WELL_MIB).read() });
     serial_print(" MiB · stack ");

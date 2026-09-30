@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## house-v0 (2026-09-30)
+
+- Gleam-only house calls first: `int 0xE0` gate, v0 `yield`/`exit`/`write(fd 1-2)`/`sleep`-stub/`time` + shut `spawn`/`grant`/`flush` (`-EAGAIN`); unknown → `-ENOSYS`. `docs/HOUSECALLS.md`.
+- `kindling-house.img` prints `kindling: house ok`; happy path silent. `make below` += `house` (G15) green.
+
 ## sweep-phase1 (2026-09-30)
 
 - Full sweep, phase 1 held: `audit ok` + `below ok` re-verified after fixes.

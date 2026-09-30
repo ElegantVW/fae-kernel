@@ -10,6 +10,7 @@ default-run = "fae-kernel"
 efi = ["dep:uefi"]
 fw-link = []
 trap6 = []
+house-test = []
 
 [dependencies]
 limine = "0.5"

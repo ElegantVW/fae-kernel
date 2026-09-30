@@ -33,10 +33,15 @@ trap6-bin:
 		$(CARGO) build --target $(RUST_TARGET) --bin fae-kernel-fw --features fw-link,trap6 --profile $(RUST_PROFILE)
 	$(OBJCOPY) -O binary $(NONE_DIR)/fae-kernel-fw kernel.trap.bin
 
+house-bin:
+	RUSTFLAGS="-C relocation-model=static" \
+		$(CARGO) build --target $(RUST_TARGET) --bin fae-kernel-fw --features fw-link,house-test --profile $(RUST_PROFILE)
+	$(OBJCOPY) -O binary $(NONE_DIR)/fae-kernel-fw kernel.house.bin
+
 efi:
 	$(CARGO) build --target $(UEFI_TARGET) --bin cerne-efi --features efi --profile $(RUST_PROFILE)
 	cp -v $(UEFI_DIR)/cerne-efi.efi BOOTX64.EFI
 
 clean:
 	$(CARGO) clean
-	rm -f kernel kernel.fw.bin kernel.trap.bin BOOTX64.EFI
+	rm -f kernel kernel.fw.bin kernel.trap.bin kernel.house.bin BOOTX64.EFI

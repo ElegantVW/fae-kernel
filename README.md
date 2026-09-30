@@ -18,11 +18,11 @@ text (font RAM stays empty) — hence background + cursor. Mark: `docs/identity/
 
 ## What this is
 
-The column: **firmware (asm) → loader (asm, off the disk) → kernel (Rust)**. Linux syscall ABI table is empty today (`docs/syscalls.md` — every entry `missing`, a missing syscall returns `ENOSYS`).
+The column: **firmware (asm) → loader (asm, off the disk) → kernel (Rust)**. Gleam speaks house calls (`docs/HOUSECALLS.md` — `int 0xE0`, v0: `yield`/`exit`/`write`/`sleep`/`time` + shut `spawn`/`grant`/`flush`); the Linux table (`docs/syscalls.md`) is reference only.
 
 - `fw/cerne-fw.asm`: 64KiB ROM, reset vector, GDT/IDT, VGA mode-3 by registers, PIC, CMOS RAM probe, 4K low pages + 2M rest, FMAP, ATA PIO — reads the loader from the boot disk (LBA 1..32, `'LDOK'` trailer) and hands over in long mode. Our BIOS: no `int 10h` / `int 15h`.
 - `ld/cerne-ld.asm`: the loader, self-contained (own ATA PIO, own serial). Reads the KMAP (LBA 0), loads the kernel straight to `0x200000`, checks its XOR and `KNDL`, jumps `0x200004`. `scripts/mkimg.py` casts the disk (`make image`).
-- `kernel/src/`: `no_std` crate — `start`, `mm` (own page tables, bump well, cup-stack), `gdt`, `idt`, `cpu` (FPU/SSE, PIC), `fw_main` (BIOS path), `efi_main` (our `BOOTX64.EFI`), Limine entry.
+- `kernel/src/`: `no_std` crate — `start`, `mm` (own page tables, bump well, cup-stack), `gdt`, `idt` (house vector `0xE0`), `house` (Gleam gate), `cpu` (FPU/SSE, PIC), `fw_main` (BIOS path), `efi_main` (our `BOOTX64.EFI`), Limine entry.
 - Borrowed, attributed, not vendored: Limine bootloader (`v10.x-binary`, cloned at build) and OVMF/EDK2 (host QEMU firmware). The paved path (`make kindle`) uses neither.
 
 See [docs/BOOT.md](docs/BOOT.md), [docs/FIRMWARE.md](docs/FIRMWARE.md), [docs/BELOW.md](docs/BELOW.md), [docs/identity/IDENTITY.md](docs/identity/IDENTITY.md), [docs/lore/kindling.md](docs/lore/kindling.md), [docs/handoff.md](docs/handoff.md).
@@ -52,13 +52,14 @@ make below          # full below gate (audit+trap+fmap+fw-trap+efi)
 | Path | Role |
 |---|---|
 | `fw/cerne-fw.asm` | firmware + fused loader (reset vector) |
-| `kernel/src/` | `no_std` crate (`start`, `mm`, `gdt`, `idt`, `cpu`, `fw_main`, `efi_main`) |
+| `kernel/src/` | `no_std` crate (`start`, `mm`, `gdt`, `idt`, `cpu`, `house`, `fw_main`, `efi_main`) |
 | `kernel/linker-fw.ld` / `linker-x86_64.ld` | fw (`0x200000`) vs higher-half link |
 | `scripts/` | `audit-kindle.sh`, `below.sh`, `romsum.py` (IBM BIOS checksum) |
 | `docs/BOOT.md` | Limine vs UEFI vs our firmware, QEMU flags |
 | `docs/FIRMWARE.md` | ROM contract (RAM map, GDT, FMAP, traps) |
-| `docs/BELOW.md` | below gate |
-| `docs/syscalls.md` | living Linux ABI table (honest stubs) |
+| `docs/BELOW.md` | below gate + house gate (G15) |
+| `docs/HOUSECALLS.md` | Gleam-only house calls (`int 0xE0`, not Linux) |
+| `docs/syscalls.md` | Linux ABI table (reference only — Gleam speaks house calls) |
 | `limine.conf` | optional Limine menu |
 
 ## Law

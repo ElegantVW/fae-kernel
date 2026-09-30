@@ -16,6 +16,16 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-09-30 — Gleed — house-call first (Gleam gate v0, `int 0xE0`)
+
+- Did: Gleam-only house calls, house-call first. New `docs/HOUSECALLS.md` (gate `0xE0` DPL 3, `rax`=n `rdi/rsi/rdx`=args, `-errno` honesty: `38` unknown / `1` refused / `11` not-ready). New `kernel/src/house.rs` (`yield` 0 / `exit` 1 / `write` 2 on fd 1-2 serial capped 1 MiB / `sleep` 3 stub / `time` 4 `rdtsc` + shut `spawn` 5 / `grant` 6 / `flush` 7 → `-EAGAIN`). `idt.rs`: `vec_house` stub (preserve, shuffle to SysV, `call house_entry`, `iretq`), `0xE0` earns `0xEE` DPL-3 gate (no trap alias). `house-test` feature + `house-bin` target: direct `dispatch()` + real `int 0xE0` knock, prints `kindling: house ok`; happy path silent (paved serial unchanged). Gate fortified: `below.sh` += `house` step (G15), `.gitignore` += `kernel.house.bin`, `BELOW.md` G15, `README` house row.
+- Proof: `make -C kernel house-bin` + `kindling-house.img` boots `cerne-fw / cerne-ld / fae-kernel / still only a spark / ok / kindling: house ok / well 256 MiB`. `sh scripts/below.sh` → `kindling: below ok` (audit+trap6+**house**+fmap-bad+fw-trap+kmap-bad+efi). `cargo fmt --check` clean; `clippy -D warnings` clean (fw, fw+house-test, limine, efi).
+- Git: this tree, local. Modified: `docs/HOUSECALLS.md` (new), `kernel/src/{house,start,idt,main,fw_main,efi_main}.rs`, `kernel/{Cargo.toml,GNUmakefile}`, `scripts/below.sh`, `.gitignore`, `docs/{BELOW,README}.md`.
+- Next: ring-3 `init` (first Gleam light) + TSS/IST; timer so `sleep`/`time` mean ms; `syscall/sysret` for speed (numbers survive). Then realms/grant, FS write, Lantern flush.
+- Do not: speak Linux on this gate; add eggs to the paved serial; let `spawn`/`grant`/`flush` silently succeed (`-EAGAIN` until real).
+
+---
+
 ## 2026-09-30 — Gleed — full sweep, phase-1 held (audit + lints + doc truth)
 
 - Did: Full sweep, phase-1 only (no ELF / `write` / `exit`). Audit: `audit ok` + `below ok` re-verified; disk image re-checked (KMAP checksum, `'LDOK'` trailer, `'KNDL'` head). Diagnose: doc drift (`BOOT.md` spark line), duplicated cup warning (`FIRMWARE.md`), `.gitignore` missing `ld/*.bin` + `kindling*.img`, `cargo fmt --check` fail, `clippy -D warnings` fail on 3 bins. Fix (behaviour-preserving): `BOOT.md` → `kindling: still only a spark`; dedup cup warning; `.gitignore` += `/ld/cerne-ld.bin`, `/kindling.img`, `/kindling-*.img`; `start.rs` `COM1 + 0` → `COM1`; `cargo fmt`; collapse nested `if let` in `main.rs` + `efi_main.rs`. Improve: all 3 clippy targets clean now. Upgrade audit: `uefi 0.35.0` pinned vs `0.41.0` latest, `limine 0.5.0` crutch — deferred deliberately to keep phase-1 green (EFI ABI churn, no need). Intentional, not bugs: EFI `ram_end` capped `1<<30` (`efi_main.rs`) vs FW `0x1_0000_0000` (`mm.rs`) — EFI avoids PCI hole, FW probes CMOS; IDT 32–255 alias first-32 stubs (`idt.rs`) with PIC masked; `nasm -w+all` abs-reloc warnings are flat-ROM `default abs` by design.
