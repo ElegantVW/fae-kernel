@@ -12,6 +12,7 @@ fw-link = []
 trap6 = []
 house-test = []
 ring3-test = []
+reclaim-test = []
 
 [dependencies]
 limine = "0.5"

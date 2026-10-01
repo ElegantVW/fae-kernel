@@ -1,5 +1,14 @@
 # fae-kernel changelog
 
+## test-vm + timer-cpl3 (2026-09-30)
+
+- `scripts/test-vm.sh`: throwaway QEMU VM (`happy|house|ring3|reclaim`, logs in `test-logs/`), 4× PASS.
+- Timer from CPL3 proven: `init` sleeps 50 ms → `init slept` → `exit(0)` (6× IRQ0 in `-d int`); ring3/house gates require it. Virtual-wire via kernel `timer::wire()` (LAPIC EN + LINT0, readback FAIL 9–12); PIT/mask health FAIL 7/8; ISR-shared ticks volatile; `init`/`wire` split (window exists post-well only).
+
+## reclaim-g1 (2026-09-30)
+
+- G1 realms + reclaim: 4 KiB frame pool (LIFO, capped), realm guard + 64 KiB cup + PT split (2M → 4K, guard not-present), canary, drop restores + replays same frames. `kindling-reclaim.img` prints `kindling: reclaim ok`. `make below` += `reclaim` (G17) green. Per-realm CR3s wait on spawn (G4).
+
 ## ring3-init (2026-09-30)
 
 - First Gleam light at CPL3: `gleam_init` (`write`/`yield`/`exit`) via `int 0xE0`; `kindling-ring3.img` prints `kindling: init ok` + `gleam exit 0`. GDT UCODE/UDATA + TSS (RSP0/IST1), pages U/S, PIT 100 Hz, #DF on IST1. `make below` += `ring3` (G16) green.

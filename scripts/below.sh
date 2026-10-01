@@ -63,12 +63,40 @@ printf '%s\n' "$got" | grep -F -q "kindling: init ok" || {
   echo "$got" | tail -12
   exit 1
 }
+printf '%s\n' "$got" | grep -F -q "kindling: init slept" || {
+  echo "FAIL ring3 (no init slept — timer IRQ from CPL3)"
+  echo "$got" | tail -12
+  exit 1
+}
 printf '%s\n' "$got" | grep -F -q "kindling: gleam exit 0" || {
   echo "FAIL ring3 (no gleam exit 0)"
   echo "$got" | tail -12
   exit 1
 }
 echo "ok   ring3"
+# restore the paved kernel for later steps
+make steel >/dev/null
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling.img
+
+echo "---- reclaim ----"
+make -C kernel reclaim-bin
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.reclaim.bin --out kindling-reclaim.img
+got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
+  -bios "$FW" -drive if=ide,format=raw,file=kindling-reclaim.img \
+  -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
+printf '%s\n' "$got" | grep -F -q "kindling: reclaim ok" || {
+  echo "FAIL reclaim"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "well 256 MiB" || {
+  echo "FAIL reclaim (no well line)"
+  echo "$got" | tail -12
+  exit 1
+}
+echo "ok   reclaim"
 # restore the paved kernel for later steps
 make steel >/dev/null
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \

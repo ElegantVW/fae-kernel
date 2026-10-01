@@ -25,6 +25,7 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G14 | Bad KMAP refused and reported | kmap-bad in `make below` | yes |
 | G15 | House gate — `int 0xE0` yield/write ok, unknown refuses | house in `make below` | yes |
 | G16 | Ring-3 init — CPL3 `write`/`yield`/`exit` via house gate | ring3 in `make below` | yes |
+| G17 | Reclaim — guard shut, drop replays same frames, count whole | reclaim in `make below` | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`.
 

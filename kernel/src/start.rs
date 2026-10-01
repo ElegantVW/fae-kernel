@@ -164,8 +164,13 @@ unsafe extern "C" fn after_cup() -> ! {
         serial_print("kindling: the cup was bitten\n");
         hcf();
     }
+    // Post-well, on our own tables: wire virtual-wire before any test that
+    // reads it. Unconditional — harmless on images that never sleep.
+    crate::timer::wire();
     #[cfg(feature = "house-test")]
     crate::house::self_test();
+    #[cfg(feature = "reclaim-test")]
+    crate::mm::reclaim_self_test();
     serial_print("kindling: well ");
     serial_u64(unsafe { core::ptr::addr_of!(WELL_MIB).read() });
     serial_print(" MiB · stack ");

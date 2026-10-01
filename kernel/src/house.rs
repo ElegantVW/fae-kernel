@@ -1,6 +1,9 @@
 //! House calls — Gleam's own gate (`int 0xE0`). Not Linux.
 //! Numbers survive the future `syscall/sysret` upgrade.
 
+#[cfg(feature = "house-test")]
+use core::arch::asm;
+
 use crate::start::{hcf, serial_print, serial_u64};
 
 pub const YIELD: u64 = 0;
@@ -75,7 +78,6 @@ pub extern "C" fn house_entry(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
 /// On success returns; on failure halts (never returns).
 #[cfg(feature = "house-test")]
 pub fn self_test() {
-    use core::arch::asm;
     // Direct: yield ok, unknown refuses, wrong fd refuses, shut calls wait.
     let mut fail = 0u64;
     if dispatch(YIELD, 0, 0, 0) != 0 {
@@ -132,6 +134,40 @@ pub fn self_test() {
     if w != 3 {
         fail = 6;
     }
+    // Timer alive? Latch PIT ch0 twice around a spin; a running counter
+    // must differ. A dead PIT would hang sleep forever — fail here instead.
+    unsafe {
+        pout(0x43, 0x00);
+        let c1 = pin(0x40) as u16 | ((pin(0x40) as u16) << 8);
+        let mut spin = 0u32;
+        while spin < 300_000 {
+            core::hint::spin_loop();
+            spin += 1;
+        }
+        pout(0x43, 0x00);
+        let c2 = pin(0x40) as u16 | ((pin(0x40) as u16) << 8);
+        if c1 == c2 {
+            fail = 7;
+        }
+        if pin(0x21) & 1 != 0 {
+            fail = 8; // IRQ0 still masked — timer::init did not hold.
+        }
+        // Virtual wire proof: SVR enabled, LINT0 ExtINT-unmasked, base sane.
+        if crate::timer::svr_seen() & 0x100 == 0 {
+            fail = 9;
+        }
+        let lint = crate::timer::lint_seen();
+        if lint & 0x10000 != 0 || lint & 0x700 != 0x700 {
+            fail = 10;
+        }
+        let base = crate::timer::apic_base_seen();
+        if base & 0xFFFF_F000 != 0xFEE0_0000 {
+            fail = 11;
+        }
+        if base & (1 << 11) == 0 {
+            fail = 12; // LAPIC disabled at the MSR — MMIO was a whisper.
+        }
+    }
     if fail != 0 {
         serial_print("kindling: house FAIL ");
         serial_u64(fail);
@@ -141,8 +177,23 @@ pub fn self_test() {
     serial_print("kindling: house ok\n");
 }
 
-// --- Ring-3 init: the first Gleam light. Speaks only via `int 0xE0`. ---
-#[cfg(feature = "ring3-test")]
+#[cfg(feature = "house-test")]
+unsafe fn pout(port: u16, val: u8) {
+    unsafe {
+        asm!("out dx, al", in("dx") port, in("al") val, options(nomem, nostack, preserves_flags))
+    }
+}
+
+#[cfg(feature = "house-test")]
+unsafe fn pin(port: u16) -> u8 {
+    let v: u8;
+    unsafe {
+        asm!("in al, dx", out("al") v, in("dx") port, options(nomem, nostack, preserves_flags));
+    }
+    v
+}
+
+// --- Ring-3 init: the first Gleam light. Speaks only via `int 0xE0`. ---#[cfg(feature = "ring3-test")]
 core::arch::global_asm!(
     ".global gleam_init",
     "gleam_init:",
@@ -153,13 +204,44 @@ core::arch::global_asm!(
     "int 0xE0",
     "xor eax, eax",
     "int 0xE0",
+    // Sleep 50 ms, then prove a tick passed (timer IRQ + RSP0 from CPL3).
+    "mov rax, 4",
+    "int 0xE0",
+    "mov r12, rax",
+    "mov rax, 3",
+    "mov rdi, 50",
+    "int 0xE0",
+    "mov rax, 4",
+    "int 0xE0",
+    "cmp rax, r12",
+    "ja 5f",
+    "mov rax, 2",
+    "mov rdi, 1",
+    "lea rsi, [rip + 6f]",
+    "mov edx, 18",
+    "int 0xE0",
+    "mov rax, 1",
+    "mov rdi, 1",
+    "int 0xE0",
+    "ud2",
+    "5:",
+    "mov rax, 2",
+    "mov rdi, 1",
+    "lea rsi, [rip + 8f]",
+    "mov edx, 21",
+    "int 0xE0",
+    "xor eax, eax",
+    "int 0xE0",
     "mov rax, 1",
     "xor edi, edi",
     "int 0xE0",
     "ud2",
     "2:",
     ".ascii \"kindling: init ok\\n\"",
-    "4:",
+    "6:",
+    ".ascii \"kindling: no tick\\n\"",
+    "8:",
+    ".ascii \"kindling: init slept\\n\"",
 );
 
 #[cfg(feature = "ring3-test")]

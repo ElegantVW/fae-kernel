@@ -16,6 +16,26 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-09-30 — Gleed — test-vm + timer from CPL3 (virtual-wire, init slept)
+
+- Did: `scripts/test-vm.sh` — the throwaway VM (`happy|house|ring3|reclaim` or any image + wants; pc/256M/serial-to-`test-logs/`, PASS/FAIL, exit 1 on MISS). All four cases green. Then the untested path: `init` now sleeps 50 ms and proves a tick passed (`init slept`, else `no tick` + `exit(1)`); ring3/house gates require it. Hunt, honestly logged: sleep hung, `-d int` showed zero IRQ0 while CPL3 house calls flowed; PIT latch test proved the counter runs and the mask is open, so the break sat between PIC and CPU; monitor `info pic/lapic` proved it (`irr=01 imr=fe` stuck, LVT0 masked, APIC disabled) — our column never enabled the LAPIC (SeaBIOS-alike boards do). Fix where it is verifiable: kernel `timer::wire()` post-well (APIC window mapped in our tables) sets EN + SVR + LINT0 ExtINT with readback (FAIL 9/10/11/12 instead of a hang); PIT health + mask checks are FAIL 7/8. A real-mode firmware attempt came out again (writes vanish while disabled) and was reverted, not kept as dead MMIO. Also fixed along the way: ISR-shared `TICKS` now volatile both ways; `init`/`wire` split (init ran pre-well, before the window exists — found via the stash reading zero); `test-logs/` ignored.
+- Proof: `test-vm happy|house|ring3|reclaim` → 4× PASS. Ring3 transcript now `… / init ok / init slept / gleam exit 0` with 6× `v=20` in `-d int`. `below ok` (ring3 step requires `init slept`).
+- Git: this tree, local. Added `scripts/test-vm.sh`; modified `kernel/src/{house,timer,mm,start}.rs`, `fw/cerne-fw.asm` (net zero — attempt reverted), `scripts/below.sh`, `.gitignore`, `docs/HOUSECALLS.md`.
+- Next: G2 Seal files (ATA write → house FS → file calls); realm cups execute on spawn (G4).
+- Do not: program the LAPIC before its window exists; trust a timer without readback; let `in(reg)` near `push rsp`.
+
+---
+
+## 2026-09-30 — Gleed — G1 realms + reclaim (frame pool, guard, G17)
+
+- Did: G1 foundation. `mm.rs`: 4 KiB frame pool (LIFO, capped 4096, `pool_init` from bump high-water), `Realm` (guard + 16 cup pages + PT page; splits the covering 2M PD entry into 512×4K with guard not-present; canary at cup base; `drop` verifies canary, restores the 2M entry, CR3-flush, hands pages back in exact reverse). `reclaim-test` feature + `reclaim-bin`: create → guard shut → drop → count whole → re-create replays same frames → guard shut → drop → count whole → `kindling: reclaim ok`. Happy path silent (pool init only). Per-realm CR3s deferred to spawn (G4) — said here, not silently dropped. Pool cap documented in code (`pool_count` tells).
+- Proof: `kindling-reclaim.img` boots `… / house ok / kindling: reclaim ok / well 256 MiB`. `sh scripts/below.sh` → `below ok` (audit+trap6+house+ring3+**reclaim**+fmap-bad+fw-trap+kmap-bad+efi). `fmt` + `clippy -D warnings` clean (all six targets). Guard proven by entry bit, not by fault (trap recovery is out-of-gate — touching the guard would `hlt`, honestly).
+- Git: this tree, local. Modified/added: `kernel/src/mm.rs`, `kernel/src/start.rs`, `kernel/{Cargo.toml,GNUmakefile}`, `scripts/below.sh`, `.gitignore`, `docs/{BELOW,README}.md`.
+- Next: G2 Seal files (ATA write → house FS → file calls); realm cups execute on spawn (G4).
+- Do not: hand pool pages out of LIFO order and expect replay; split an already-split PD (oom is the honest answer); map the guard.
+
+---
+
 ## 2026-09-30 — Gleed — ring-3 init (first Gleam light, G16)
 
 - Did: CPL3 `gleam_init` speaking only house calls (`write` → `yield` → `exit(0)` via `int 0xE0`). `gdt.rs`: UCODE `0x18` / UDATA `0x20` (DPL 3) + TSS `0x28` (RSP0 = cup top, IST1 = 8 KiB #DF stack, `ltr`). `mm.rs`: all pages U/S while realms shut (PML4 + PDPT + 2M PD). `timer.rs` (new): PIT 100 Hz, IRQ0 unmasked on BIOS only; `sleep` blocks / `time` = ms there, stub + `rdtsc` fallback on EFI/crutch. `idt.rs`: `vec_timer` (`0x20`, EOI), #DF on IST1. `house.rs`: `enter_init` via `iretq` (fixed-reg frame, `LEA` entry). `below.sh` += `ring3` step (G16). Two asm laws paid for and written into `HOUSECALLS.md`: fixed regs for addresses (never `in(reg)` for the pushed RSP), `lea` for symbol addresses (no push-imm64).
