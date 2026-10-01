@@ -8,7 +8,8 @@
 ;   FMAP at 0x8000. RAM map: we own 0x9000-0xCFFF (ourselves) and 0x8400
 ;   (KMAP scratch); both are free RAM once the guest takes the jump.
 ; Contract out: kernel per KMAP at 0x200000, its XOR and 'KNDL' both checked,
-;   jump 0x200004. Failure is honest: cause line, then the house line
+;   then the cairn per KMAP+20/24 at 0x100000 when packed, jump 0x200004.
+;   Failure is honest: cause line, then the house line
 ;   "kindling: no guest at 0x200000", then hlt. Never half a jump.
 
         bits    64
@@ -17,6 +18,7 @@
 
 KMAP            equ     0x8400          ; KMAP scratch (one sector)
 KERNEL          equ     0x200000        ; guest slot
+CAIRN           equ     0x100000        ; cairn slot (leaves + sparks)
 CHUNK           equ     128             ; sectors per READ SECTORS command
 KMAP_MAGIC      equ     0x50414D4B      ; 'KMAP'
 KNDL_MAGIC      equ     0x4C444E4B      ; 'KNDL'
@@ -85,6 +87,35 @@ kstart:
         jne     .badsum
         cmp     dword [KERNEL], KNDL_MAGIC
         jne     .noguest
+        ; --- the cairn, if packed: straight to 0x100000, same rite.
+        ; KMAP+20/24 ride after the kernel half the old checksum covers —
+        ; the loader never checks them, the kernel does (docs/CAIRN.md).
+        mov     eax, [KMAP + 20]                ; cairn_lba
+        test    eax, eax
+        jz      .guest                          ; none packed — honest
+        mov     r12d, eax                       ; next lba
+        mov     r13d, [KMAP + 24]               ; sectors left
+        mov     rdi, CAIRN
+.cload:
+        test    r13d, r13d
+        jz      .guest
+        mov     r14d, CHUNK
+        cmp     r13d, r14d
+        jae     .ccnt
+        mov     r14d, r13d
+.ccnt:
+        mov     eax, r12d
+        mov     ecx, r14d
+        call    ata_read
+        jc      .nodisk
+        mov     eax, r14d
+        shl     eax, 9
+        add     rdi, rax
+        add     r12d, r14d
+        sub     r13d, r14d
+        jmp     .cload
+
+.guest:
         mov     rax, KERNEL + 4
         jmp     rax
 

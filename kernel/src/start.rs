@@ -176,9 +176,11 @@ unsafe extern "C" fn after_cup() -> ! {
     serial_print(" MiB · stack ");
     serial_u64(unsafe { core::ptr::addr_of!(CUP_KIB).read() });
     serial_print(" KiB cup\n");
-    #[cfg(feature = "ring3-test")]
+    #[cfg(feature = "tale-test")]
+    crate::cairn::run_tale(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
+    #[cfg(all(feature = "ring3-test", not(feature = "tale-test")))]
     crate::house::enter_init(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
-    #[cfg(not(feature = "ring3-test"))]
+    #[cfg(not(any(feature = "ring3-test", feature = "tale-test")))]
     hcf();
 }
 

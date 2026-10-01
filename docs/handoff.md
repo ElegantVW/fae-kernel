@@ -16,6 +16,16 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-10-01 — Gleed — G2a cairn + tale (first spark tells a leaf, G18)
+
+- Did: The cairn, all in house voice (`docs/CAIRN.md` — cairn/leaves/sparks/glean/stow/tale/first-leaf; names checked against `fae-names.md`, no suite collisions). `scripts/mkimg.py`: `--leaf/--spark`, cairn after the kernel, KMAP offsets 0–16 untouched (loader trust intact) + cairn fields at 20/24/28 with own checksum. `ld/cerne-ld.asm`: lays the cairn at `0x100000` when packed (same 128-sector rite; disk failure refuses, never half a jump). `kernel/src/cairn.rs` (new): KMAP scratch at `0x8400` → locate + verify (magic/version/bounds/per-leaf xor); `glean` call 8 (name/buf/len, short reads honest; `-EPERM`/`-ENOENT`/`-EIO`/`-ENODEV`); `stow` 9 shut. `spark/tale.asm` (345 B, RIP-relative, entry at 0): gleans `first-leaf`, writes it, exits. `spark/first-leaf.txt`: the two ROM murmurs, now speakable. Runner reuses the proven iretq (`enter_user`); `run_tale` verifies the spark first. EFI/Limine hands have no cairn — `glean` refuses `-ENODEV`, documented.
+- Proof: `kindling-tale.img` tells `kindling remembers the reset / the jump is the vow` then `gleam exit 0`. `test-vm tale` PASS. `below ok` (audit+trap6+house+ring3+reclaim+**tale**+fmap-bad+fw-trap+kmap-bad+efi). `fmt` + all clippy targets clean.
+- Git: this tree, local. Added `docs/CAIRN.md`, `kernel/src/cairn.rs`, `spark/tale.asm`, `spark/first-leaf.txt`; modified caster/loader/kernel/gates/docs. `spark/*.bin` ignored.
+- Next: G2b `stow` (ATA write → lay bytes down); more leaves; realm cups execute on spawn (G4).
+- Do not: move KMAP 0–16; jump with an unverified spark; let a bad xor speak partial bytes.
+
+---
+
 ## 2026-09-30 — Gleed — test-vm + timer from CPL3 (virtual-wire, init slept)
 
 - Did: `scripts/test-vm.sh` — the throwaway VM (`happy|house|ring3|reclaim` or any image + wants; pc/256M/serial-to-`test-logs/`, PASS/FAIL, exit 1 on MISS). All four cases green. Then the untested path: `init` now sleeps 50 ms and proves a tick passed (`init slept`, else `no tick` + `exit(1)`); ring3/house gates require it. Hunt, honestly logged: sleep hung, `-d int` showed zero IRQ0 while CPL3 house calls flowed; PIT latch test proved the counter runs and the mask is open, so the break sat between PIC and CPU; monitor `info pic/lapic` proved it (`irr=01 imr=fe` stuck, LVT0 masked, APIC disabled) — our column never enabled the LAPIC (SeaBIOS-alike boards do). Fix where it is verifiable: kernel `timer::wire()` post-well (APIC window mapped in our tables) sets EN + SVR + LINT0 ExtINT with readback (FAIL 9/10/11/12 instead of a hang); PIT health + mask checks are FAIL 7/8. A real-mode firmware attempt came out again (writes vanish while disabled) and was reverted, not kept as dead MMIO. Also fixed along the way: ISR-shared `TICKS` now volatile both ways; `init`/`wire` split (init ran pre-well, before the window exists — found via the stash reading zero); `test-logs/` ignored.

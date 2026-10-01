@@ -102,6 +102,31 @@ make steel >/dev/null
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
   --kernel kernel/kernel.fw.bin --out kindling.img
 
+echo "---- tale ----"
+nasm -f bin -o spark/tale.bin spark/tale.asm
+make -C kernel tale-bin
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.tale.bin --out kindling-tale.img \
+  --spark tale=spark/tale.bin --leaf first-leaf=spark/first-leaf.txt
+got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
+  -bios "$FW" -drive if=ide,format=raw,file=kindling-tale.img \
+  -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
+printf '%s\n' "$got" | grep -F -q "kindling remembers the reset" || {
+  echo "FAIL tale"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "kindling: gleam exit 0" || {
+  echo "FAIL tale (no gleam exit 0)"
+  echo "$got" | tail -12
+  exit 1
+}
+echo "ok   tale"
+# restore the paved kernel for later steps
+make steel >/dev/null
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling.img
+
 echo "---- fmap-bad ----"
 nasm -f bin -DAUDIT_BAD_FMAP -o "$FW" fw/cerne-fw.asm
 python3 scripts/romsum.py "$FW"

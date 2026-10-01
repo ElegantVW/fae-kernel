@@ -18,7 +18,7 @@ text (font RAM stays empty) — hence background + cursor. Mark: `docs/identity/
 
 ## What this is
 
-The column: **firmware (asm) → loader (asm, off the disk) → kernel (Rust)**. Gleam speaks house calls (`docs/HOUSECALLS.md` — `int 0xE0`, v0: `yield`/`exit`/`write`/`sleep`/`time` + shut `spawn`/`grant`/`flush`); the first light runs at CPL3 (`kindling: init ok`). The Linux table (`docs/syscalls.md`) is reference only.
+The column: **firmware (asm) → loader (asm, off the disk) → kernel (Rust)**. Gleam speaks house calls (`docs/HOUSECALLS.md` — `int 0xE0`: `yield`/`exit`/`write`/`sleep`/`time`/`glean` + shut `spawn`/`grant`/`flush`/`stow`); the first light runs at CPL3, and the first spark tells a leaf from the cairn (`docs/CAIRN.md`). The Linux table (`docs/syscalls.md`) is reference only.
 
 - `fw/cerne-fw.asm`: 64KiB ROM, reset vector, GDT/IDT, VGA mode-3 by registers, PIC, CMOS RAM probe, 4K low pages + 2M rest, FMAP, ATA PIO — reads the loader from the boot disk (LBA 1..32, `'LDOK'` trailer) and hands over in long mode. Our BIOS: no `int 10h` / `int 15h`.
 - `ld/cerne-ld.asm`: the loader, self-contained (own ATA PIO, own serial). Reads the KMAP (LBA 0), loads the kernel straight to `0x200000`, checks its XOR and `KNDL`, jumps `0x200004`. `scripts/mkimg.py` casts the disk (`make image`).
@@ -57,8 +57,10 @@ make below          # full below gate (audit+trap+fmap+fw-trap+efi)
 | `scripts/` | `audit-kindle.sh`, `below.sh`, `romsum.py` (IBM BIOS checksum) |
 | `docs/BOOT.md` | Limine vs UEFI vs our firmware, QEMU flags |
 | `docs/FIRMWARE.md` | ROM contract (RAM map, GDT, FMAP, traps) |
-| `docs/BELOW.md` | below gate + house gate (G15) |
+| `docs/BELOW.md` | below gate + house (G15) + ring3 (G16) + reclaim (G17) + tale (G18) |
 | `docs/HOUSECALLS.md` | Gleam-only house calls (`int 0xE0`, not Linux) |
+| `docs/CAIRN.md` | the cairn (leaves + sparks on disk, `glean`) |
+| `spark/` | Gleam sparks (`tale.asm` + `first-leaf.txt`, house voice) |
 | `docs/syscalls.md` | Linux ABI table (reference only — Gleam speaks house calls) |
 | `limine.conf` | optional Limine menu |
 

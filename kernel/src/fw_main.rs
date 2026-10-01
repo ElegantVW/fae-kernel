@@ -2,6 +2,7 @@
 #![no_std]
 #![no_main]
 
+mod cairn;
 mod cpu;
 mod gdt;
 mod house;

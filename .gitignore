@@ -5,9 +5,11 @@
 /kernel/kernel.house.bin
 /kernel/kernel.ring3.bin
 /kernel/kernel.reclaim.bin
+/kernel/kernel.tale.bin
 /kernel/BOOTX64.EFI
 /fw/cerne-fw.bin
 /ld/cerne-ld.bin
+/spark/*.bin
 /kindling.img
 /kindling-*.img
 /esp/

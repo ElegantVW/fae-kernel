@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## tale-g2a (2026-10-01)
+
+- The cairn (house voice throughout): leaves + sparks on disk (`docs/CAIRN.md`), `glean` call 8, `stow` 9 shut. Loader lays the cairn at `0x100000`; KMAP 0–16 untouched. First spark `tale` tells `first-leaf` at CPL3. `make below` += `tale` (G18) green.
+
 ## test-vm + timer-cpl3 (2026-09-30)
 
 - `scripts/test-vm.sh`: throwaway QEMU VM (`happy|house|ring3|reclaim`, logs in `test-logs/`), 4× PASS.

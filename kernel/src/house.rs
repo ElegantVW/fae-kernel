@@ -62,7 +62,8 @@ pub fn dispatch(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
             0
         }
         TIME => crate::timer::ms(),
-        SPAWN | GRANT | FLUSH => err(EAGAIN),
+        crate::cairn::GLEAN => crate::cairn::glean(a0, a1, a2),
+        SPAWN | GRANT | FLUSH | crate::cairn::STOW => err(EAGAIN),
         _ => err(ENOSYS),
     }
 }
@@ -193,7 +194,44 @@ unsafe fn pin(port: u16) -> u8 {
     v
 }
 
-// --- Ring-3 init: the first Gleam light. Speaks only via `int 0xE0`. ---#[cfg(feature = "ring3-test")]
+// --- CPL3 entry: inits and sparks alike ride this iretq. ---
+// RSP0 must already point at the kernel cup (caller sets it), so CPL3
+// interrupts land home. Never returns.
+#[cfg(any(feature = "ring3-test", feature = "tale-test"))]
+static mut USTACK: [u8; 16384] = [0; 16384];
+
+#[cfg(any(feature = "ring3-test", feature = "tale-test"))]
+pub fn enter_user(entry: u64) -> ! {
+    let ustack_top = (core::ptr::addr_of!(USTACK) as u64 + 16384) & !0xF;
+    unsafe {
+        // NOTE: addresses ride fixed regs — never `in(reg)` (it may pick
+        // RSP), never `push {sym}` (that pushes the qword AT the symbol;
+        // there is no push-imm64).
+        core::arch::asm!(
+            "mov ax, 0x23",
+            "mov ds, ax",
+            "mov es, ax",
+            "xor eax, eax",
+            "mov fs, ax",
+            "mov gs, ax",
+            "push {ss}",
+            "push r10",
+            "push {rflags}",
+            "push {cs}",
+            "push r11",
+            "iretq",
+            ss = const crate::gdt::UDATA_RPL3,
+            rflags = const 0x202u64,
+            cs = const crate::gdt::UCODE_RPL3,
+            in("r10") ustack_top,
+            in("r11") entry,
+            options(noreturn),
+        );
+    }
+}
+
+// --- Ring-3 init: the first Gleam light. Speaks only via `int 0xE0`. ---
+#[cfg(feature = "ring3-test")]
 core::arch::global_asm!(
     ".global gleam_init",
     "gleam_init:",
@@ -245,43 +283,13 @@ core::arch::global_asm!(
 );
 
 #[cfg(feature = "ring3-test")]
-static mut USTACK: [u8; 16384] = [0; 16384];
-
-#[cfg(feature = "ring3-test")]
 unsafe extern "C" {
     fn gleam_init();
 }
 
-/// Drop to CPL3 at `gleam_init` on a private stack. RSP0 already points
-/// at the kernel cup, so CPL3 interrupts land home. Never returns.
+/// Drop to CPL3 at `gleam_init` on the private stack. Never returns.
 #[cfg(feature = "ring3-test")]
 pub fn enter_init(cup_top: u64) -> ! {
     crate::gdt::set_kernel_stack(cup_top);
-    let ustack_top = (core::ptr::addr_of!(USTACK) as u64 + 16384) & !0xF;
-    unsafe {
-        // NOTE: ustack_top rides in R10 and the entry in R11 — never
-        // `in(reg)` (it may pick RSP), and never `push {sym}` (that pushes
-        // the qword AT the symbol; there is no push-imm64).
-        core::arch::asm!(
-            "mov ax, 0x23",
-            "mov ds, ax",
-            "mov es, ax",
-            "xor eax, eax",
-            "mov fs, ax",
-            "mov gs, ax",
-            "lea r11, [rip + {init}]",
-            "push {ss}",
-            "push r10",
-            "push {rflags}",
-            "push {cs}",
-            "push r11",
-            "iretq",
-            ss = const crate::gdt::UDATA_RPL3,
-            rflags = const 0x202u64,
-            cs = const crate::gdt::UCODE_RPL3,
-            init = sym gleam_init,
-            in("r10") ustack_top,
-            options(noreturn),
-        );
-    }
+    enter_user(gleam_init as *const () as u64);
 }

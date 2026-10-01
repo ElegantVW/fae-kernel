@@ -2,7 +2,7 @@
 # test-vm — Kindling test VM: build (if asked), boot, judge the transcript.
 #
 # usage:
-#   test-vm happy|house|ring3|reclaim   build + boot the known image, check it
+#   test-vm happy|house|ring3|reclaim|tale   build + boot the known image
 #   test-vm <image> <want>...           boot any image; every want must appear
 #
 # Logs land in test-logs/<case>.log. Prints PASS/FAIL. Exit 0/1.
@@ -85,8 +85,17 @@ reclaim)
     run_case reclaim kindling-reclaim.img \
         "kindling: house ok" "kindling: reclaim ok" "well 256 MiB"
     ;;
+tale)
+    nasm -f bin -o spark/tale.bin spark/tale.asm
+    make -C kernel tale-bin >/dev/null
+    python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+        --kernel kernel/kernel.tale.bin --out kindling-tale.img \
+        --spark tale=spark/tale.bin --leaf first-leaf=spark/first-leaf.txt >/dev/null
+    run_case tale kindling-tale.img \
+        "kindling remembers the reset" "the jump is the vow" "kindling: gleam exit 0"
+    ;;
 "")
-    echo "usage: test-vm happy|house|ring3|reclaim|<image> <want>..." >&2
+    echo "usage: test-vm happy|house|ring3|reclaim|tale|<image> <want>..." >&2
     exit 2
     ;;
 *)

@@ -13,6 +13,7 @@ trap6 = []
 house-test = []
 ring3-test = []
 reclaim-test = []
+tale-test = []
 
 [dependencies]
 limine = "0.5"
