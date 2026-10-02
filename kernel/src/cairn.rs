@@ -36,8 +36,37 @@ struct Cairn {
     len: u64,
 }
 
+/// Once verified, by base+len. Sparks share the cairn's roof and may spit on
+/// their own floorboards (tale's buf lives inside its own record) — so the
+/// full-image xor runs ONCE here; the per-leaf xor in `find` still guards
+/// every read after that.
+static mut SEALED_BASE: u64 = 0;
+static mut SEALED_LEN: u64 = 0;
+static mut SEALED: bool = false;
+
 /// Locate + verify the cairn via the KMAP scratch the loader left at 0x8400.
 fn open() -> Option<Cairn> {
+    unsafe {
+        if core::ptr::addr_of!(SEALED).read() {
+            let base = core::ptr::addr_of!(SEALED_BASE).read();
+            let len = core::ptr::addr_of!(SEALED_LEN).read();
+            if (base as *const u32).read_volatile() != CAIR_MAGIC {
+                return None;
+            }
+            return Some(Cairn { base, len });
+        }
+    }
+    let c = open_verify()?;
+    unsafe {
+        core::ptr::addr_of_mut!(SEALED_BASE).write(c.base);
+        core::ptr::addr_of_mut!(SEALED_LEN).write(c.len);
+        core::ptr::addr_of_mut!(SEALED).write(true);
+    }
+    Some(c)
+}
+
+/// Full verification: KMAP scratch magic, cairn checksum, header shape.
+fn open_verify() -> Option<Cairn> {
     unsafe {
         let k = KMAP_RAM as *const u32;
         if k.read_volatile() != KMAP_MAGIC {
@@ -134,34 +163,46 @@ fn find(c: &Cairn, name: &[u8], kind_want: u32) -> Result<(u64, u64), u64> {
     Err(ENOENT)
 }
 
-/// Gather a leaf's bytes: `rdi` = NUL-terminated name (≤64, plain ascii, no
-/// `/`), `rsi` = buf, `rdx` = len (cap 1 MiB). Returns bytes copied (a short
-/// read when the leaf is longer is honest, not an error) or `-errno`.
-/// v0 trusts mapped RAM for pointers (shared all-U/S map); realms (G4) will
-/// check callers properly.
-pub fn glean(name_ptr: u64, buf: u64, len: u64) -> u64 {
-    if name_ptr == 0 || buf == 0 || len == 0 || len > MAX_DATA {
-        return err(EPERM);
+/// Read a NUL-terminated leaf name (≤64, plain ascii, no `/`).
+/// Err(EPERM) on any cheek: null, empty, overlong, unterminated, slashy.
+fn take_name(name_ptr: u64) -> Result<([u8; 64], usize), u64> {
+    if name_ptr == 0 {
+        return Err(EPERM);
     }
     let mut name = [0u8; 64];
     let mut nl = 0usize;
     loop {
         if nl >= 65 {
-            return err(EPERM);
+            return Err(EPERM);
         }
         let b = unsafe { ((name_ptr + nl as u64) as *const u8).read_volatile() };
         if b == 0 {
             break;
         }
         if nl >= 64 || b == b'/' || !(0x20..=0x7E).contains(&b) {
-            return err(EPERM);
+            return Err(EPERM);
         }
         name[nl] = b;
         nl += 1;
     }
     if nl == 0 {
+        return Err(EPERM);
+    }
+    Ok((name, nl))
+}
+
+/// Gather a leaf's bytes: `rdi` = name, `rsi` = buf, `rdx` = len (cap 1 MiB).
+/// Returns bytes copied (a short read when the leaf is longer is honest, not
+/// an error) or `-errno`. v0 trusts mapped RAM for pointers (shared all-U/S
+/// map); realms (G4) will check callers properly.
+pub fn glean(name_ptr: u64, buf: u64, len: u64) -> u64 {
+    if buf == 0 || len == 0 || len > MAX_DATA {
         return err(EPERM);
     }
+    let (name, nl) = match take_name(name_ptr) {
+        Ok(v) => v,
+        Err(e) => return err(e),
+    };
     let Some(c) = open() else {
         return err(ENODEV);
     };
@@ -180,29 +221,160 @@ pub fn glean(name_ptr: u64, buf: u64, len: u64) -> u64 {
     }
 }
 
-/// Loose the `tale` spark: verify, point RSP0 home, enter at CPL3.
+static mut SECTOR_SCRATCH: [u16; 256] = [0; 256]; // 512 B, 2-aligned for the word loop
+
+fn sector_eq(ram: u64, disk: u64) -> bool {
+    let mut i = 0u64;
+    while i < 512 {
+        unsafe {
+            if ((ram + i) as *const u8).read_volatile() != ((disk + i) as *const u8).read_volatile()
+            {
+                return false;
+            }
+        }
+        i += 1;
+    }
+    true
+}
+
+fn cairn_xor(base: u64, len: u64) -> u32 {
+    let mut x = 0u32;
+    let mut off = 0u64;
+    while off < len {
+        x ^= unsafe { ((base + off) as *const u32).read_volatile() };
+        off += 4;
+    }
+    x
+}
+
+/// Lay bytes down: re-ink a leaf with the same measure (`rdx` must equal the
+/// leaf's `datalen` — G2b keeps one shape, growing leaves is later work).
+/// Writes the touched cairn sectors back through ATA, re-reads each to prove
+/// it landed, rewrites LBA0 with the new cairn sum so the next boot still
+/// trusts the cairn, and verifies that too. Returns bytes laid or `-errno`
+/// (`EPERM` args/shape/spark, `ENOENT` missing, `ENODEV` no cairn,
+/// `EIO` disk error or verify mismatch). Ink is for leaves — sparks refuse.
+pub fn stow(name_ptr: u64, buf: u64, len: u64) -> u64 {
+    if buf == 0 || len == 0 || len > MAX_DATA {
+        return err(EPERM);
+    }
+    let (name, nl) = match take_name(name_ptr) {
+        Ok(v) => v,
+        Err(e) => return err(e),
+    };
+    let Some(c) = open() else {
+        return err(ENODEV);
+    };
+    let (da, dl) = match find(&c, &name[..nl], 0) {
+        Ok(v) => v,
+        Err(e) => return err(e),
+    };
+    if len != dl {
+        return err(EPERM);
+    }
+    // KMAP scratch fields the loader left: cairn_lba + sectors at +20/+24.
+    let (clba, csec) = unsafe {
+        let k = KMAP_RAM as *const u32;
+        (k.add(5).read_volatile(), k.add(6).read_volatile())
+    };
+    // Re-ink the RAM copy first (volatile both ways — DMA-adjacent).
+    let mut i = 0u64;
+    while i < dl {
+        let b = unsafe { ((buf + i) as *const u8).read_volatile() };
+        unsafe { ((da + i) as *mut u8).write_volatile(b) };
+        i += 1;
+    }
+    // Leaf xor field sits at the 4-aligned tail of the data.
+    let xe = align_up(da - c.base + dl, 4);
+    let mut x = 0u32;
+    let mut q = 0u64;
+    while q < align_up(dl, 4) {
+        x ^= unsafe { ((da + q) as *const u32).read_volatile() };
+        q += 4;
+    }
+    unsafe { ((c.base + xe) as *mut u32).write_volatile(x) };
+    // Fresh cairn sum over the whole image, into the RAM KMAP scratch.
+    let sum = clba ^ csec ^ cairn_xor(c.base, c.len) ^ CAIR_MAGIC;
+    unsafe { ((KMAP_RAM + 28) as *mut u32).write_volatile(sum) };
+    // Sectors touched: leaf bytes through the xor field (offsets, not addrs).
+    let first = (da - c.base) / 512;
+    let last = (xe + 4 - 1) / 512;
+    let mut idx = first;
+    while idx <= last {
+        let ram = c.base + idx * 512;
+        if !crate::ata::write_sectors(clba + idx as u32, 1, ram as *mut u8) {
+            return err(EIO);
+        }
+        let scratch = core::ptr::addr_of_mut!(SECTOR_SCRATCH) as *mut u8;
+        if !crate::ata::read_sectors(clba + idx as u32, 1, scratch) {
+            return err(EIO);
+        }
+        if !sector_eq(ram, scratch as u64) {
+            return err(EIO);
+        }
+        idx += 1;
+    }
+    // LBA0 carries the new sum — without it the next boot distrusts the cairn.
+    if !crate::ata::write_sectors(0, 1, KMAP_RAM as *mut u8) {
+        return err(EIO);
+    }
+    let scratch = core::ptr::addr_of_mut!(SECTOR_SCRATCH) as *mut u8;
+    if !crate::ata::read_sectors(0, 1, scratch) {
+        return err(EIO);
+    }
+    if !sector_eq(KMAP_RAM, scratch as u64) {
+        return err(EIO);
+    }
+    dl
+}
+
+/// Loose the `tale` spark: verify, copy it out of the cairn onto private
+/// pool pages, point RSP0 home, enter at CPL3. The copy matters: the spark's
+/// buf lives inside its own record, and running in place lets its writes
+/// perturb the image the next boot verifies — the floor must be its own.
 /// Never returns (the spark exits via the house gate).
 #[cfg(feature = "tale-test")]
 pub fn run_tale(cup_top: u64) -> ! {
     crate::gdt::set_kernel_stack(cup_top);
-    let entry = {
+    let (src, len) = {
         let Some(c) = open() else {
             serial_print("kindling: tale FAIL no-cairn\n");
             hcf();
         };
         match find(&c, b"tale", 1) {
-            Ok((da, dl)) => {
-                if dl == 0 || dl > MAX_DATA {
-                    serial_print("kindling: tale FAIL bad-spark\n");
-                    hcf();
-                }
-                da
-            }
+            Ok(v) => v,
             Err(_) => {
                 serial_print("kindling: tale FAIL no-spark\n");
                 hcf();
             }
         }
     };
-    crate::house::enter_user(entry);
+    // Sparks are small by law (64 KiB); the first pop off a fresh pool is a
+    // contiguous run, asserted below — no silent scatter.
+    if len == 0 || len > 65536 {
+        serial_print("kindling: tale FAIL bad-spark\n");
+        hcf();
+    }
+    let pages = len.div_ceil(4096);
+    let mut dst = 0u64;
+    let mut prev = 0u64;
+    let mut i = 0u64;
+    while i < pages {
+        let p = crate::mm::page_alloc();
+        if dst == 0 {
+            dst = p;
+        } else if p != prev + 4096 {
+            serial_print("kindling: tale FAIL scattered\n");
+            hcf();
+        }
+        prev = p;
+        let mut j = 0u64;
+        while j < 4096 && i * 4096 + j < len {
+            let b = unsafe { ((src + i * 4096 + j) as *const u8).read_volatile() };
+            unsafe { ((p + j) as *mut u8).write_volatile(b) };
+            j += 1;
+        }
+        i += 1;
+    }
+    crate::house::enter_user(dst);
 }

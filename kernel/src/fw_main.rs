@@ -2,6 +2,7 @@
 #![no_std]
 #![no_main]
 
+mod ata;
 mod cairn;
 mod cpu;
 mod gdt;

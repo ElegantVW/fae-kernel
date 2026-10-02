@@ -63,7 +63,8 @@ pub fn dispatch(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
         }
         TIME => crate::timer::ms(),
         crate::cairn::GLEAN => crate::cairn::glean(a0, a1, a2),
-        SPAWN | GRANT | FLUSH | crate::cairn::STOW => err(EAGAIN),
+        crate::cairn::STOW => crate::cairn::stow(a0, a1, a2),
+        SPAWN | GRANT | FLUSH => err(EAGAIN),
         _ => err(ENOSYS),
     }
 }

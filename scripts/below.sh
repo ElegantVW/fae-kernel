@@ -107,12 +107,18 @@ nasm -f bin -o spark/tale.bin spark/tale.asm
 make -C kernel tale-bin
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
   --kernel kernel/kernel.tale.bin --out kindling-tale.img \
-  --spark tale=spark/tale.bin --leaf first-leaf=spark/first-leaf.txt
+  --spark tale=spark/tale.bin --leaf first-leaf=spark/first-leaf.txt \
+  --leaf slate=spark/slate.txt
 got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
   -bios "$FW" -drive if=ide,format=raw,file=kindling-tale.img \
   -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
 printf '%s\n' "$got" | grep -F -q "kindling remembers the reset" || {
   echo "FAIL tale"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "stowed" || {
+  echo "FAIL tale (no stowed on first boot)"
   echo "$got" | tail -12
   exit 1
 }
@@ -122,6 +128,28 @@ printf '%s\n' "$got" | grep -F -q "kindling: gleam exit 0" || {
   exit 1
 }
 echo "ok   tale"
+echo "---- stow ----"
+# Same disk, second boot: the slate must read inked without re-stowing.
+# That is the proof the ink survived on iron, not in RAM.
+got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
+  -bios "$FW" -drive if=ide,format=raw,file=kindling-tale.img \
+  -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
+printf '%s\n' "$got" | grep -F -q "ink holds" || {
+  echo "FAIL stow (ink did not survive)"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "kept" || {
+  echo "FAIL stow (no kept on second boot)"
+  echo "$got" | tail -12
+  exit 1
+}
+if printf '%s\n' "$got" | grep -F -q "stowed"; then
+  echo "FAIL stow (re-stowed on second boot — ink never landed)"
+  echo "$got" | tail -12
+  exit 1
+fi
+echo "ok   stow"
 # restore the paved kernel for later steps
 make steel >/dev/null
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \

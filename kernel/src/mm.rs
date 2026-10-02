@@ -235,8 +235,9 @@ pub fn cup_kib(stack: u64) -> u64 {
 #[cfg(feature = "reclaim-test")]
 pub const REALM_PAGES: usize = 18; // guard + 16 cup + PT
 
-#[cfg(feature = "reclaim-test")]
-fn page_alloc() -> u64 {
+#[allow(dead_code)]
+#[cfg(any(feature = "reclaim-test", feature = "tale-test"))]
+pub(crate) fn page_alloc() -> u64 {
     unsafe {
         let n = core::ptr::addr_of_mut!(POOL_N);
         if n.read() == 0 {

@@ -90,9 +90,36 @@ tale)
     make -C kernel tale-bin >/dev/null
     python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
         --kernel kernel/kernel.tale.bin --out kindling-tale.img \
-        --spark tale=spark/tale.bin --leaf first-leaf=spark/first-leaf.txt >/dev/null
+        --spark tale=spark/tale.bin --leaf first-leaf=spark/first-leaf.txt \
+        --leaf slate=spark/slate.txt >/dev/null
     run_case tale kindling-tale.img \
-        "kindling remembers the reset" "the jump is the vow" "kindling: gleam exit 0"
+        "kindling remembers the reset" "stowed" "ink holds" "kindling: gleam exit 0"
+    # Same disk, second boot: ink must read kept, never re-stowed.
+    log="test-logs/tale2.log"
+    timeout --foreground --signal=KILL 4 \
+        "$QEMU" -M pc -m 256M -bios fw/cerne-fw.bin \
+        -drive if=ide,format=raw,file=kindling-tale.img \
+        -display none -serial stdio -no-reboot -no-shutdown \
+        >"$log" 2>/dev/null || true
+    tr -d '\r' <"$log" >"$log.clean" && mv "$log.clean" "$log"
+    if grep -F -q "stowed" "$log"; then
+        echo "FAIL tale2 (re-stowed — ink never landed)"
+        tail -8 "$log"
+        exit 1
+    fi
+    echo "---- vm tale2 (same disk) ----"
+    if grep -F -q "kept" "$log" && grep -F -q "ink holds" "$log"; then
+        echo "PASS tale2"
+    else
+        echo "FAIL tale2 — see $log"
+        tail -8 "$log"
+        exit 1
+    fi
+    # Recast pristine so the next run starts from wax.
+    python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+        --kernel kernel/kernel.tale.bin --out kindling-tale.img \
+        --spark tale=spark/tale.bin --leaf first-leaf=spark/first-leaf.txt \
+        --leaf slate=spark/slate.txt >/dev/null
     ;;
 "")
     echo "usage: test-vm happy|house|ring3|reclaim|tale|<image> <want>..." >&2

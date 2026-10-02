@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## stow-g2b (2026-10-01)
+
+- Ink holds on iron: kernel ATA PIO read/write, `stow` call 9 (exact re-ink; sectors + LBA0 rewritten and ATA-verified, `-EIO` on mismatch). `tale` v2 stows the slate on boot1 (`stowed`), reads it `kept` on boot2. Sparks run from private pool copies (buf-in-cairn, twice learned). `make below` += `stow` (G19) green.
+
 ## tale-g2a (2026-10-01)
 
 - The cairn (house voice throughout): leaves + sparks on disk (`docs/CAIRN.md`), `glean` call 8, `stow` 9 shut. Loader lays the cairn at `0x100000`; KMAP 0–16 untouched. First spark `tale` tells `first-leaf` at CPL3. `make below` += `tale` (G18) green.

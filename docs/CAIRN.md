@@ -68,6 +68,26 @@ the loader only carries.
 v0 rides the paved path only (BIOS → loader → kernel). EFI/Limine hands have
 no cairn — `glean` there refuses `-ENODEV`, loudly documented, not silent.
 
+## Laying down (stow, G2b)
+
+`stow` re-inks a leaf with the same measure (`len` must equal `datalen` —
+growing leaves is later work; ink is for leaves, sparks refuse). The rite:
+
+1. Verify (KMAP scratch → checksum → walk → leaf xor, as `glean` does).
+2. Copy the bytes + recompute the leaf xor + recompute the cairn sum, all in
+   the RAM copy.
+3. ATA-write every touched cairn sector back, re-read each through ATA and
+   byte-compare (`-EIO` on any mismatch — never trust an unproven write).
+4. Rewrite LBA0 with the new sum (without it the next boot distrusts the
+   cairn) and verify that sector too.
+
+Sparks run from a private pool copy, never in place: a spark's buf lives
+inside its own record, and running in place lets its writes perturb the image
+the next boot verifies — the floor must be its own (64 KiB law, contiguity
+asserted, `tale FAIL scattered` otherwise). A panic mid-stow leaves the disk
+half-inked (sector new, KMAP old) — the next boot then refuses `no-cairn`
+instead of reading corrupt. That refusal is the design working.
+
 ## Words (house voice, no collisions)
 
 - **cairn** — the store (stone pile for many pages; `fae-names.md` §6).

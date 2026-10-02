@@ -16,6 +16,16 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-10-01 — Gleed — G2b stow (ink holds on iron, G19)
+
+- Did: `kernel/src/ata.rs` (new — PIO LBA28 read/write, master, poll + SRST×3, cache flush, mirrors the loader's rite; paved path only, floating bus refuses). `stow` call 9: exact-measure re-ink of leaves (sparks refuse); RAM copy + leaf xor + cairn sum, ATA-write touched sectors with ATA re-read compare, rewrite + verify LBA0, `-EIO` on any mismatch. `tale` v2: tells first-leaf (G18 kept), then gleans the slate — wax it stows `ink holds` and says `stowed`, inked it says `kept`. Runner copies sparks to private pool pages (the buf-in-cairn strike, twice learned: tale's buf wrote its own record and broke the next verify — first the open cache, then the persisted sum; floors must be private). A mid-stow panic leaves sector-new/KMAP-old and the next boot refuses `no-cairn` instead of reading corrupt (seen live, kept as designed). Below `tale` step grows a second boot on the same file: boot1 `stowed`, boot2 `kept` without `stowed` (anti-grep — re-stowing would prove nothing).
+- Proof: boot1 `stowed / ink holds / exit 0`, boot2 `kept / ink holds / exit 0`. `test-vm tale` (+`tale2`) PASS. `below ok` (…+tale+**stow**+…). `fmt` + all clippy targets clean. EFI stow → `EIO` (AHCI bus floats), documented.
+- Git: this tree, local. Added `kernel/src/ata.rs`, `spark/slate.txt`; rewrote `spark/tale.asm`; modified cairn/house/mains/gates/docs.
+- Next: more leaves (a second spark?); `spawn` needs ELF + realms (G4); G3 keys/flush for Lantern.
+- Do not: grow leaves in place (same measure or nothing); trust a write never re-read; run sparks in the cairn.
+
+---
+
 ## 2026-10-01 — Gleed — G2a cairn + tale (first spark tells a leaf, G18)
 
 - Did: The cairn, all in house voice (`docs/CAIRN.md` — cairn/leaves/sparks/glean/stow/tale/first-leaf; names checked against `fae-names.md`, no suite collisions). `scripts/mkimg.py`: `--leaf/--spark`, cairn after the kernel, KMAP offsets 0–16 untouched (loader trust intact) + cairn fields at 20/24/28 with own checksum. `ld/cerne-ld.asm`: lays the cairn at `0x100000` when packed (same 128-sector rite; disk failure refuses, never half a jump). `kernel/src/cairn.rs` (new): KMAP scratch at `0x8400` → locate + verify (magic/version/bounds/per-leaf xor); `glean` call 8 (name/buf/len, short reads honest; `-EPERM`/`-ENOENT`/`-EIO`/`-ENODEV`); `stow` 9 shut. `spark/tale.asm` (345 B, RIP-relative, entry at 0): gleans `first-leaf`, writes it, exits. `spark/first-leaf.txt`: the two ROM murmurs, now speakable. Runner reuses the proven iretq (`enter_user`); `run_tale` verifies the spark first. EFI/Limine hands have no cairn — `glean` refuses `-ENODEV`, documented.

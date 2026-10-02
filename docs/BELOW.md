@@ -27,6 +27,7 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G16 | Ring-3 init — CPL3 `write`/`yield`/`exit` via house gate | ring3 in `make below` | yes |
 | G17 | Reclaim — guard shut, drop replays same frames, count whole | reclaim in `make below` | yes |
 | G18 | Tale — `tale` spark gleans `first-leaf` from the cairn at CPL3 | tale in `make below` | yes |
+| G19 | Stow — `tale` re-inks the slate; second boot reads it kept | stow in `make below` | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`.
 

@@ -27,7 +27,7 @@ Swift, purposeful, direct — no noise. Unknown refuses, never silently succeeds
 | 6 | `grant` | — | `-EAGAIN` | shut (needs capabilities) |
 | 7 | `flush` | — | `-EAGAIN` | shut (needs Lantern framebuffer) |
 | 8 | `glean` | `rdi` = name, `rsi` = buf, `rdx` = len | bytes or `-errno` | done (cairn leaves; missing → `-ENOENT`, bad args → `-EPERM`, no cairn → `-ENODEV`, bad xor → `-EIO`) |
-| 9 | `stow` | — | `-EAGAIN` | shut (G2b write path) |
+| 9 | `stow` | `rdi` = name, `rsi` = buf, `rdx` = len (= `datalen`) | bytes or `-errno` | done (re-ink same measure; sectors + LBA0 rewritten and re-read; `-EIO` on mismatch) |
 
 Anything else → `-ENOSYS`.
 
