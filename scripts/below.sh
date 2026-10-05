@@ -191,6 +191,18 @@ make steel >/dev/null
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
   --kernel kernel/kernel.fw.bin --out kindling.img
 
+echo "---- ingle ----"
+nasm -f bin -o spark/ingle.bin spark/ingle.asm
+make -C kernel ingle-bin
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.ingle.bin --out kindling-ingle.img \
+  --spark ingle=spark/ingle.bin
+python3 scripts/check-ingle.py
+# restore the paved kernel for later steps
+make steel >/dev/null
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling.img
+
 echo "---- fmap-bad ----"
 python3 scripts/mkfont.py
 nasm -f bin -DAUDIT_BAD_FMAP -o "$FW" fw/cerne-fw.asm

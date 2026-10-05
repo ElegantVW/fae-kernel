@@ -10,6 +10,8 @@ use crate::start::{hcf, serial_print, serial_u64};
 pub const HOUSE_VEC: usize = 0xE0;
 /// PIT IRQ0 vector (BIOS path).
 pub const TIMER_VEC: usize = 0x20;
+/// PS/2 keyboard IRQ1 vector (BIOS path).
+pub const KBD_VEC: usize = 0x21;
 
 #[derive(Clone, Copy)]
 #[repr(C, packed)]
@@ -106,6 +108,29 @@ macro_rules! vecs {
             "pop rcx\n",
             "pop rax\n",
             "iretq\n",
+            // PS/2 keyboard: IRQ1. Preserve everything, drain, return.
+            ".global vec_kbd\n",
+            "vec_kbd:\n",
+            "push rax\n",
+            "push rcx\n",
+            "push rdx\n",
+            "push rsi\n",
+            "push rdi\n",
+            "push r8\n",
+            "push r9\n",
+            "push r10\n",
+            "push r11\n",
+            "call kbd_tick\n",
+            "pop r11\n",
+            "pop r10\n",
+            "pop r9\n",
+            "pop r8\n",
+            "pop rdi\n",
+            "pop rsi\n",
+            "pop rdx\n",
+            "pop rcx\n",
+            "pop rax\n",
+            "iretq\n",
         );
     };
 }
@@ -118,6 +143,7 @@ vecs!(
 unsafe extern "C" {
     fn vec_house();
     fn vec_timer();
+    fn vec_kbd();
     fn vec_0();
     fn vec_1();
     fn vec_2();
@@ -256,6 +282,7 @@ pub fn install() {
         (*idt)[HOUSE_VEC] = gate_user(vec_house as *const () as u64);
         // PIT tick earns its own stub too (else IRQ0 wears trap 0's name).
         (*idt)[TIMER_VEC] = gate(vec_timer as *const () as u64);
+        (*idt)[KBD_VEC] = gate(vec_kbd as *const () as u64);
         // Double-fault rides IST1 (gdt TSS) so a blown stack still speaks.
         (*idt)[8] = gate_ist(s[8] as u64, 1);
         let ptr = IdtPtr {

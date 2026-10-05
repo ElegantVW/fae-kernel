@@ -15,6 +15,7 @@ ring3-test = []
 reclaim-test = []
 tale-test = []
 spawn-test = []
+ingle-test = []
 
 [dependencies]
 limine = "0.5"

@@ -31,7 +31,7 @@ help:
 	@echo "  make audit     several bowls; fail if a line is missing"
 	@echo "  make below     full below gate (audit+trap+fmap+fw-trap+efi)"
 	@echo "  make below-ten    gate × 10"
-	@echo "  make test      throwaway VMs (happy..spawn) + grove on VGA"
+	@echo "  make test      throwaway VMs (happy..ingle) + grove on VGA"
 	@echo "  make serial-uefi   other people's firmware, our clothes"
 	@echo "  make serial        borrowed match (Limine)"
 	@echo "  make distclean     the forest forgets; the seed does not"
@@ -64,6 +64,7 @@ test:
 	sh scripts/test-vm.sh reclaim
 	sh scripts/test-vm.sh tale
 	sh scripts/test-vm.sh spawn
+	sh scripts/test-vm.sh ingle
 	python3 scripts/check-grove.py
 	@echo "kindling: test ok"
 hearth-see: image

@@ -4,7 +4,7 @@
 
 x86_64 kernel we write. The pink suite is userspace. Creature name: **Kindling** — you light kindling, not the log. Lighting tools *are* the build tools (`make help`: flint, steel, tinder, hearth, kindle).
 
-Phase 1 (memory: kindle well + cup-stack) is green. House light (G15–G22) is on: CPL3 `write`/`exit`, tale, stow, spawn, Grove on the glass (ConOut before GOP on EFI). Linux ELF stays later; `grant`/`flush` stay shut.
+Phase 1 (memory: kindle well + cup-stack) is green. House light (G15–G24) is on: CPL3 `write`/`exit`/`read`, tale, stow, spawn, Grove on the glass, `ingle` greeter spark. Linux ELF stays later; `grant`/`flush` stay shut.
 
 ## Look
 
@@ -60,7 +60,7 @@ make below          # full below gate (audit+trap+fmap+fw-trap+efi)
 | `docs/BELOW.md` | below gate + house (G15) + ring3 (G16) + reclaim (G17) + tale (G18) + stow (G19) + spawn (G20) |
 | `docs/HOUSECALLS.md` | Gleam-only house calls (`int 0xE0`, not Linux) |
 | `docs/CAIRN.md` | the cairn (leaves + sparks on disk, `glean`) |
-| `spark/` | Gleam sparks (`tale.asm` + `wick.asm`, house voice) |
+| `spark/` | Gleam sparks (`tale.asm`, `wick.asm`, `ingle.asm`) |
 | `docs/syscalls.md` | Linux ABI table (reference only — Gleam speaks house calls) |
 | `limine.conf` | optional Limine menu |
 
@@ -73,7 +73,7 @@ make below          # full below gate (audit+trap+fmap+fw-trap+efi)
 
 ## Phases
 
-0 serial hello → **1 memory (kindle well + cup-stack)** → house light (G15–G22) → `grant`/`flush` / Linux ELF → 3 fork/exec → … suite as guest.
+0 serial hello → **1 memory (kindle well + cup-stack)** → house light (G15–G24) → `grant`/`flush` / Linux ELF → 3 fork/exec → … suite as guest.
 
 ## License
 

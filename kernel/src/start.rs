@@ -114,6 +114,7 @@ pub fn start(hint: Option<Hint>) -> ! {
     if matches!(&hint, Some(h) if !h.trust_map) {
         crate::timer::init();
     }
+    crate::kbd::init();
     crate::cpu::enable_fpu_sse();
     #[cfg(feature = "trap6")]
     unsafe {
@@ -175,17 +176,29 @@ unsafe extern "C" fn after_cup() -> ! {
     serial_print(" MiB · stack ");
     serial_u64(unsafe { core::ptr::addr_of!(CUP_KIB).read() });
     serial_print(" KiB cup\n");
-    #[cfg(feature = "spawn-test")]
+    #[cfg(feature = "ingle-test")]
+    crate::cairn::run_ingle(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
+    #[cfg(all(feature = "spawn-test", not(feature = "ingle-test")))]
     crate::cairn::run_spawn(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
-    #[cfg(all(feature = "tale-test", not(feature = "spawn-test")))]
+    #[cfg(all(
+        feature = "tale-test",
+        not(feature = "spawn-test"),
+        not(feature = "ingle-test")
+    ))]
     crate::cairn::run_tale(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
     #[cfg(all(
         feature = "ring3-test",
         not(feature = "tale-test"),
-        not(feature = "spawn-test")
+        not(feature = "spawn-test"),
+        not(feature = "ingle-test")
     ))]
     crate::house::enter_init(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
-    #[cfg(not(any(feature = "ring3-test", feature = "tale-test", feature = "spawn-test")))]
+    #[cfg(not(any(
+        feature = "ring3-test",
+        feature = "tale-test",
+        feature = "spawn-test",
+        feature = "ingle-test"
+    )))]
     hcf();
 }
 

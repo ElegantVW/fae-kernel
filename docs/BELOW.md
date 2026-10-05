@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → loader (off the disk) → Kindling spark. House light (G15–G22) is on.
+Firmware → loader (off the disk) → Kindling spark. House light (G15–G24) is on.
 Linux ELF waits on its own gate. This file staying green is still the law.
 
 Run: `make below`  
@@ -32,9 +32,11 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G20 | Spawn — `wick` on a private cup + CR3 tells `second-leaf` | spawn in `make below` | yes |
 | G21 | Grove — glyph + title on the glass after the well | grove in `make below` | yes |
 | G22 | Iron Grove — ConOut glyph before GOP; serial wait bounded | efi greps `Grove` / `image` / `exit` | yes |
+| G23 | Keyboard — PS/2 8042, IRQ1, house `read` fd 0 | ingle in `make below` | yes |
+| G24 | Ingle — greeter spark waits for a line, says the fire is lit | ingle in `make below` / `make test` | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 
-House calls (Gleam-only, not Linux): `docs/HOUSECALLS.md`. First set: `yield` / `exit` / `write(fd 1-2)` / `sleep` / `time` / `glean` / `stow` / `spawn` + shut `grant` / `flush` (`-EAGAIN`). `write` also paints the glass (VGA / GOP). Happy serial unchanged; `house-test` image prints `kindling: house ok`; `spawn-test` prints `kindling: spawn ok` then the second-leaf. After the well the glass shows the Grove glyph + title. EFI prints Grove on ConOut before touching GOP (IdeaPad has no COM1; Insyde hung inside GOP open).
+House calls (Gleam-only, not Linux): `docs/HOUSECALLS.md`. First set: `yield` / `exit` / `write(fd 1-2)` / `read(fd 0)` / `sleep` / `time` / `glean` / `stow` / `spawn` + shut `grant` / `flush` (`-EAGAIN`). `write` also paints the glass (VGA / GOP). Happy serial unchanged; `house-test` image prints `kindling: house ok`; `spawn-test` prints `kindling: spawn ok` then the second-leaf. After the well the glass shows the Grove glyph + title. EFI prints Grove on ConOut before touching GOP (IdeaPad has no COM1; Insyde hung inside GOP open).
 
 Out of gate: storage beyond boot reads (writes, filesystems), SMP APs, LA57 well, trap recover, real iron besides QEMU.

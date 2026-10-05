@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## ingle-g24 (2026-10-05)
+
+- House `read` (call 10) on fd 0: PS/2 8042, IRQ1, scancode set 1 → ASCII. No controller is `-EAGAIN`. Wrong fd is `-EPERM`. Blocks until a byte when live.
+- Spark `ingle` writes its name, reads a line, writes `the fire is lit`, `exit 0`. `make below` += `ingle` (G23/G24). `make test` runs it via monitor `sendkey ret`.
+
 ## iron-grove-g22 (2026-10-05)
 
 - EFI ConOut prints the Grove sigil + title *before* any GOP open. IdeaPad 3 15ITL6 (Insyde) froze after `cerne-efi` inside GOP; the panel is the only transcript. Breadcrumbs `image` / `gop` / `exit`. GOP paint still happens before `ExitBootServices` when the open returns.

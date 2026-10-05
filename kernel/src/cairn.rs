@@ -408,6 +408,31 @@ pub fn run_spawn(cup_top: u64) -> ! {
     crate::house::enter_user_in(realm.spark, realm.cup_top, realm.cr3);
 }
 
+/// Loose `ingle`: greeter spark, private CR3 + cup, waits for a key.
+/// Never returns.
+#[cfg(feature = "ingle-test")]
+pub fn run_ingle(cup_top: u64) -> ! {
+    crate::gdt::set_kernel_stack(cup_top);
+    let (src, len) = {
+        let Some(c) = open() else {
+            spawn_fail(1);
+        };
+        match find(&c, b"ingle", 1) {
+            Ok(v) => v,
+            Err(_) => spawn_fail(2),
+        }
+    };
+    if len == 0 || len > 65536 {
+        spawn_fail(3);
+    }
+    let Some(dst) = copy_out(src, len) else {
+        spawn_fail(4);
+    };
+    let realm = crate::mm::place_spark(dst, len);
+    serial_print("kindling: ingle ok\n");
+    crate::house::enter_user_in(realm.spark, realm.cup_top, realm.cr3);
+}
+
 /// Loose the `tale` spark: verify, copy it out of the cairn onto private
 /// pool pages, point RSP0 home, enter at CPL3. The copy matters: the spark's
 /// buf lives inside its own record, and running in place lets its writes

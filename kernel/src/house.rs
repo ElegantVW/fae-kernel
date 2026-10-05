@@ -14,6 +14,7 @@ pub const TIME: u64 = 4;
 pub const SPAWN: u64 = 5;
 pub const GRANT: u64 = 6;
 pub const FLUSH: u64 = 7;
+pub const READ: u64 = 10;
 
 const EPERM: u64 = 1;
 #[cfg(feature = "house-test")]
@@ -65,6 +66,13 @@ pub fn dispatch(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
                 err(EPERM)
             }
         }
+        READ => {
+            if a0 == 0 {
+                crate::kbd::read(a1 as *mut u8, a2)
+            } else {
+                err(EPERM)
+            }
+        }
         SLEEP => {
             crate::timer::sleep_ms(a0);
             0
@@ -101,6 +109,9 @@ pub fn self_test() {
     }
     if dispatch(WRITE, 7, 0, 0) != err(EPERM) {
         fail = 3;
+    }
+    if dispatch(READ, 1, 0, 0) != err(EPERM) {
+        fail = 14;
     }
     if dispatch(SPAWN, 0, 0, 0) != err(EPERM) {
         fail = 4;

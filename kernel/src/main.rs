@@ -8,6 +8,7 @@ mod gdt;
 mod glass;
 mod house;
 mod idt;
+mod kbd;
 mod mm;
 mod start;
 mod timer;

@@ -28,6 +28,7 @@ Swift, purposeful, direct — no noise. Unknown refuses, never silently succeeds
 | 7 | `flush` | — | `-EAGAIN` | shut (needs Lantern framebuffer) |
 | 8 | `glean` | `rdi` = name, `rsi` = buf, `rdx` = len | bytes or `-errno` | done (cairn leaves; missing → `-ENOENT`, bad args → `-EPERM`, no cairn → `-ENODEV`, bad xor → `-EIO`) |
 | 9 | `stow` | `rdi` = name, `rsi` = buf, `rdx` = len (= `datalen`) | bytes or `-errno` | done (re-ink same measure; sectors + LBA0 rewritten and re-read; `-EIO` on mismatch) |
+| 10 | `read` | `rdi` = fd, `rsi` = buf, `rdx` = len | bytes or `-errno` | done on fd 0 (PS/2 ASCII); other fd → `-EPERM`; no 8042 → `-EAGAIN`; blocks until a byte when live |
 
 Anything else → `-ENOSYS`.
 
@@ -55,5 +56,7 @@ from ring 0 — direct `dispatch()` + real `int 0xE0` — and prints
 `kindling: house ok`. Null `spawn` must be `-EPERM`; a missing name is
 `-ENODEV` or `-ENOENT`. Feature `spawn-test` then looses `wick` on a
 private CR3: `kindling: spawn ok`, the second-leaf, `gleam exit 0`.
+Feature `ingle-test` looses `ingle`: `kindling: ingle ok`, the spark writes
+`ingle`, `read` waits, Enter yields `the fire is lit` then `gleam exit 0`.
 Happy path (no feature) prints nothing new;
 the paved serial stays `cerne-fw / cerne-ld / fae-kernel / still only a spark / well …`.
