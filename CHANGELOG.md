@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## glass-g26 (2026-10-05)
+
+- Stick was current (md5 match); iron still Grove + quiet cursor. EFI well identity-mapped only 0..1 GiB, then `mov cr3` — Insyde PE/GOP above that blinds the panel, QEMU OVMF stays low and serial-only gates stay green. `prepare_well` now maps the loaded image (WB) and GOP (UC) into the new tables before CR3. If the PE ends past the well cap, the bump drinks 4 MiB (or after a low image), never past `ram_end`. `show()` writes `kindling` on the log row (pre-EBS GOP already works on iron). After CR3 the glass says `well`. ConOut prints `pe` / `gop` hex. Serial `kindling: gop 0xADDR 0xPITCH` after the well. `make below` += efi-glass (QEMU `xp` of the log row) and stick (`cmp` KINDLING when the pen is plugged; skip if the pen is out or sudo is missing). Audit 2G bowl waits 8s.
+
 ## ingle-wait-g25c (2026-10-05)
 
 - Iron showed a quiet cursor under Grove: cairn planted and ingle wrote, then `read` `hlt`'d. EFI never programs the PIT, and laptop IRQ1 often dies after ExitBootServices, so that `hlt` never wakes. `read` now polls the 8042 data port and `pause`s unless the PIT is armed. GOP log sits at Grove's margin with a parchment bar cursor. After the well the glass says `kindling`, and `no kbd` if the 8042 probe refused.

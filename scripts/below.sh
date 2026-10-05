@@ -308,4 +308,10 @@ cp -f kernel/BOOTX64.EFI esp/EFI/BOOT/
 cp -f spark/cairn.bin esp/EFI/BOOT/CAIRN
 python3 scripts/check-efi-ingle.py
 
+echo "---- efi-glass ----"
+python3 scripts/check-efi-glass.py
+
+echo "---- stick ----"
+sh scripts/check-stick.sh
+
 echo "kindling: below ok"

@@ -29,9 +29,9 @@ help:
 	@echo "  make kindle    flint + steel + hearth — paved fire"
 	@echo "  make hearth-see   same fire, window (lilac VGA)"
 	@echo "  make audit     several bowls; fail if a line is missing"
-	@echo "  make below     full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle)"
+	@echo "  make below     full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle+efi-glass)"
 	@echo "  make below-ten    gate × 10"
-	@echo "  make test      throwaway VMs (happy..ingle) + grove on VGA"
+	@echo "  make test      throwaway VMs (happy..ingle) + grove + efi-glass"
 	@echo "  make serial-uefi   other people's firmware, our clothes"
 	@echo "  make serial        borrowed match (Limine)"
 	@echo "  make distclean     the forest forgets; the seed does not"
@@ -68,6 +68,8 @@ test:
 	sh scripts/test-vm.sh spawn
 	sh scripts/test-vm.sh ingle
 	python3 scripts/check-grove.py
+	$(MAKE) efi
+	python3 scripts/check-efi-glass.py
 	@echo "kindling: test ok"
 hearth-see: image
 	$(QEMU) -M pc -bios fw/cerne-fw.bin \

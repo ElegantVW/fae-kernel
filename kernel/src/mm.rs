@@ -23,6 +23,12 @@ pub struct Hint {
     pub ram_end: u64,
     /// EFI map is already the truth — do not probe (MMIO).
     pub trust_map: bool,
+    /// Loaded image start (EFI PE). 0 if the well already covers it.
+    pub image_base: u64,
+    /// GOP framebuffer physical address. 0 if none.
+    pub fb_addr: u64,
+    /// GOP framebuffer byte length (height * pitch).
+    pub fb_len: u64,
 }
 
 pub struct Bump {
@@ -149,8 +155,19 @@ pub unsafe fn prepare_well(hint: Hint) -> Well {
     } else {
         probe_cap(claimed)
     } & !(BIG - 1);
-    let drink = hint.kernel_end.max(0x40_0000);
-    let need = drink + PAGE * 8 + STACK_MANA;
+    let img_lo = hint.image_base;
+    let img_hi = hint.kernel_end;
+    let mut drink = hint.kernel_end.max(0x40_0000);
+    let need = PAGE * 8 + STACK_MANA;
+    if drink >= ram_end || ram_end.saturating_sub(drink) < need {
+        // PE sits above the well cap (Insyde). Bump from 4 MiB, or after a
+        // low image that occupies that window.
+        drink = 0x40_0000;
+        if img_lo != 0 && img_lo < ram_end && img_hi > drink {
+            drink = align_up(img_hi, PAGE);
+        }
+    }
+    let need = drink + need;
     if ram_end < need || ram_end <= drink {
         oom();
     }
@@ -210,6 +227,14 @@ pub unsafe fn prepare_well(hint: Hint) -> Well {
     pool_init(align_up(bump.next, PAGE), ram_end);
     unsafe {
         core::ptr::addr_of_mut!(KERNEL_CR3).write(pml4 as u64);
+    }
+    // Still on firmware tables: plant the PE and GOP into the *new* map so
+    // `mov cr3` does not unmap the running image or the glass.
+    if img_lo != 0 && img_hi > img_lo {
+        map_ident(img_lo, img_hi - img_lo, false);
+    }
+    if hint.fb_addr != 0 && hint.fb_len != 0 {
+        map_ident(hint.fb_addr, hint.fb_len, true);
     }
     Well {
         top,
@@ -710,6 +735,11 @@ fn probe_cap(cap: u64) -> u64 {
 /// GOP / MMIO lives outside the well; without this, `mov cr3` blinds the glass.
 /// Already-present RAM leaves are left alone. Empty PDPT slots get a fresh PD.
 pub fn map_uc(phys: u64, len: u64) {
+    map_ident(phys, len, true);
+}
+
+/// Identity-map 2M pages. `uc` sets PCD+PWT (GOP). Already-present leaves stay.
+fn map_ident(phys: u64, len: u64, uc: bool) {
     if phys == 0 || len == 0 {
         return;
     }
@@ -725,16 +755,31 @@ pub fn map_uc(phys: u64, len: u64) {
     if cr3 == 0 {
         return;
     }
+    let flags = if uc {
+        P | RW | PCD | PWT | PS
+    } else {
+        P | RW | PS
+    };
     unsafe {
-        let pml4e = (cr3 as *const u64).read_volatile();
-        if pml4e & P == 0 {
-            return;
-        }
-        let pdpt = pte_phys(pml4e) as *mut u64;
+        let pml4 = cr3 as *mut u64;
         let mut va = start;
         while va < end {
+            let pml4i = ((va >> 39) & 511) as usize;
             let gb = ((va >> 30) & 511) as usize;
             let pdi = ((va >> 21) & 511) as usize;
+            let pml4e = pml4.add(pml4i).read_volatile();
+            let pdpt = if pml4e & P == 0 {
+                let pdpt = page_alloc();
+                core::ptr::write_bytes(pdpt as *mut u8, 0, PAGE as usize);
+                pml4.add(pml4i).write_volatile(pdpt | P | RW);
+                pdpt
+            } else if pml4e & PS != 0 {
+                va += BIG;
+                continue;
+            } else {
+                pte_phys(pml4e)
+            };
+            let pdpt = pdpt as *mut u64;
             let pdpte = pdpt.add(gb).read_volatile();
             let pd = if pdpte & P == 0 {
                 let pd = page_alloc();
@@ -750,7 +795,7 @@ pub fn map_uc(phys: u64, len: u64) {
             let slot = (pd as *mut u64).add(pdi);
             let e = slot.read_volatile();
             if e & P == 0 {
-                slot.write_volatile(va | P | RW | PCD | PWT | PS);
+                slot.write_volatile(va | flags);
             }
             va += BIG;
         }

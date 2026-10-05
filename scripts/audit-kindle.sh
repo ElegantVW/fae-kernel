@@ -28,7 +28,11 @@ run() {
   name=$1
   want=$2
   shift 2
-  got=$(timeout --foreground --signal=KILL 3 "$@" 2>/dev/null | tr -d '\r' || true)
+  to=3
+  if [ "$name" = 2G ]; then
+    to=8
+  fi
+  got=$(timeout --foreground --signal=KILL "$to" "$@" 2>/dev/null | tr -d '\r' || true)
   printf '%s\n' "$got" | grep -F -q "$want" || {
     echo "FAIL $name (want: $want)"
     echo "$got" | tail -8

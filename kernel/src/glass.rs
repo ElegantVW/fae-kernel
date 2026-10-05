@@ -99,6 +99,20 @@ pub fn show() {
         show_vga();
     } else if unsafe { core::ptr::addr_of!(FB).read().addr } != 0 {
         show_gop();
+    } else {
+        return;
+    }
+    let msg = b"kindling\n";
+    put_bytes(msg.as_ptr(), msg.len() as u64);
+}
+
+/// GOP physical addr, pitch, width, height. None if VGA-only or unset.
+pub fn fb_info() -> Option<(u64, u64, u64, u64)> {
+    let fb = unsafe { core::ptr::addr_of!(FB).read() };
+    if fb.addr == 0 || fb.bpp < 32 {
+        None
+    } else {
+        Some((fb.addr, fb.pitch, fb.width, fb.height))
     }
 }
 

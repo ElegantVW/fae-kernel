@@ -68,7 +68,9 @@ kindling: still only a spark
 
 `make serial-uefi` copies `EFI/BOOT/CAIRN` next to `BOOTX64.EFI`. A missing
 cairn skips the `cairn` line; Grove still paints, then the glass says
-`no ingle`. After the well, `ingle` runs when the cairn planted.
+`kindling` (from `show`) and `no ingle`. After the well, `ingle` runs when
+the cairn planted. The well maps the PE and GOP before `mov cr3` so a
+high Insyde load does not freeze the pre-EBS picture.
 
 ConOut (the laptop panel) carries `cerne-efi`, the Grove sigil, `image` /
 `cairn` / `gop` / `exit`. COM1 carries `fae-kernel` and the well line. OVMF

@@ -100,6 +100,17 @@ pub(crate) fn serial_u64(n: u64) {
     let _ = Serial.write_str(core::str::from_utf8(&buf[i..]).unwrap());
 }
 
+pub(crate) fn serial_hex(n: u64) {
+    let mut buf = [0u8; 16];
+    let mut i = 0usize;
+    while i < 16 {
+        let d = ((n >> (60 - 4 * i)) & 0xF) as u8;
+        buf[i] = if d < 10 { b'0' + d } else { b'a' + d - 10 };
+        i += 1;
+    }
+    let _ = Serial.write_str(core::str::from_utf8(&buf).unwrap());
+}
+
 /// Ceremony first. Then, if `hint` is Some, Kindling takes the well and a cup-stack.
 pub fn start(hint: Option<Hint>) -> ! {
     serial_init();
@@ -167,8 +178,15 @@ unsafe extern "C" fn after_cup() -> ! {
     // reads it. Unconditional — harmless on images that never sleep.
     crate::timer::wire();
     crate::glass::map_and_show();
+    if let Some((addr, pitch, _, _)) = crate::glass::fb_info() {
+        serial_print("kindling: gop 0x");
+        serial_hex(addr);
+        serial_print(" 0x");
+        serial_hex(pitch);
+        serial_print("\n");
+    }
     {
-        let msg = b"kindling\n";
+        let msg = b"well\n";
         crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
         if !crate::kbd::live() {
             let msg = b"no kbd\n";

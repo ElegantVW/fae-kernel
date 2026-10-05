@@ -56,6 +56,9 @@ unsafe extern "C" fn kmain() -> ! {
         kernel_end,
         ram_end,
         trust_map: false,
+        image_base: 0,
+        fb_addr: 0,
+        fb_len: 0,
     }))
 }
 

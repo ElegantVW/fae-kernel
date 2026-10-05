@@ -38,6 +38,21 @@ fn conout(s: &str) {
     });
 }
 
+fn conout_hex(n: u64) {
+    let mut buf = [0u8; 18];
+    buf[0] = b'0';
+    buf[1] = b'x';
+    let mut i = 0usize;
+    while i < 16 {
+        let d = ((n >> (60 - 4 * i)) & 0xF) as u8;
+        buf[2 + i] = if d < 10 { b'0' + d } else { b'a' + d - 10 };
+        i += 1;
+    }
+    if let Ok(s) = core::str::from_utf8(&buf) {
+        conout(s);
+    }
+}
+
 struct CairnBuf {
     src: u64,
     len: u64,
@@ -289,6 +304,9 @@ fn efi_main() -> Status {
         device = img.device();
     }
     conout("image\r\n");
+    conout("pe ");
+    conout_hex(img_base);
+    conout("\r\n");
     let cairn_buf = load_cairn(device);
     let mut fb = (core::ptr::null_mut(), 0u64, 0u64, 0u64, 0u16, true);
     // GetProtocol, not exclusive: the Insyde test iron hangs inside an
@@ -327,7 +345,9 @@ fn efi_main() -> Status {
         }
     }
     if !fb.0.is_null() && fb.4 >= 32 {
-        conout("gop\r\n");
+        conout("gop ");
+        conout_hex(fb.0 as u64);
+        conout("\r\n");
         crate::glass::offer_gop(fb.0 as u64, fb.1, fb.2, fb.3, fb.4, fb.5);
         crate::glass::show();
     } else {
@@ -348,12 +368,21 @@ fn efi_main() -> Status {
         }
     }
     let ram_end = ram_end
-        .max(kernel_end.saturating_add(0x20_0000))
+        .max(0x40_0000u64.saturating_add(0x20_0000))
         .min(1 << 30);
+    let fb_addr = if fb.0.is_null() { 0 } else { fb.0 as u64 };
+    let fb_len = if fb_addr == 0 {
+        0
+    } else {
+        fb.2.saturating_mul(fb.3)
+    };
     start(Some(Hint {
         kernel_end,
         ram_end,
         trust_map: true,
+        image_base: img_base,
+        fb_addr,
+        fb_len,
     }))
 }
 
