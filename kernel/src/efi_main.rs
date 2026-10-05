@@ -33,27 +33,52 @@ fn efi_main() -> Status {
         let _ = stdout.write_str("cerne-efi\r\n");
     });
     let mut fb = (core::ptr::null_mut(), 0u64, 0u64, 0u64, 0u16);
-    if let Ok(handle) = uefi::boot::get_handle_for_protocol::<GraphicsOutput>()
-        && let Ok(mut gop) = uefi::boot::open_protocol_exclusive::<GraphicsOutput>(handle)
-    {
-        let mode = gop.current_mode_info();
-        let mut region = gop.frame_buffer();
-        let bpp = match mode.pixel_format() {
-            PixelFormat::Rgb | PixelFormat::Bgr => 32,
-            _ => 0,
+    // GetProtocol, not exclusive: the Insyde test iron hangs inside an
+    // exclusive GOP open (QEMU's OVMF says yes). We only read the mode and
+    // the framebuffer address, so the lightest open is also the honest one.
+    // Unsafe: application use, image handle as agent, dropped before
+    // ExitBootServices — the handle provably outlives the scope.
+    if let Ok(handle) = uefi::boot::get_handle_for_protocol::<GraphicsOutput>() {
+        let params = uefi::boot::OpenProtocolParams {
+            handle,
+            agent: uefi::boot::image_handle(),
+            controller: None,
         };
-        let (w, h) = mode.resolution();
-        fb = (
-            region.as_mut_ptr(),
-            w as u64,
-            h as u64,
-            mode.stride() as u64 * 4,
-            bpp,
-        );
+        if let Ok(mut gop) = unsafe {
+            uefi::boot::open_protocol::<GraphicsOutput>(
+                params,
+                uefi::boot::OpenProtocolAttributes::GetProtocol,
+            )
+        } {
+            let mode = gop.current_mode_info();
+            let mut region = gop.frame_buffer();
+            let bpp = match mode.pixel_format() {
+                PixelFormat::Rgb | PixelFormat::Bgr => 32,
+                _ => 0,
+            };
+            let (w, h) = mode.resolution();
+            fb = (
+                region.as_mut_ptr(),
+                w as u64,
+                h as u64,
+                mode.stride() as u64 * 4,
+                bpp,
+            );
+        }
     }
     let mut kernel_end = 0x40_0000u64;
-    if let Ok(img) = uefi::boot::open_protocol_exclusive::<LoadedImage>(uefi::boot::image_handle())
-    {
+    // GetProtocol here too — same firmware, same rule.
+    let lip = uefi::boot::OpenProtocolParams {
+        handle: uefi::boot::image_handle(),
+        agent: uefi::boot::image_handle(),
+        controller: None,
+    };
+    if let Ok(img) = unsafe {
+        uefi::boot::open_protocol::<LoadedImage>(
+            lip,
+            uefi::boot::OpenProtocolAttributes::GetProtocol,
+        )
+    } {
         let (base, size) = img.info();
         kernel_end = (base as u64).saturating_add(size);
     }

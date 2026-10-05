@@ -16,6 +16,26 @@ Bowl of unused names: [lore/fae-names.md](lore/fae-names.md) (research dataset).
 
 ---
 
+## 2026-10-05 — Gleed — EFI GetProtocol (live-iron hang, no gate change)
+
+- Did: Live IdeaPad 3 15ITL6 (Secure Boot off, USB FAT) froze after `cerne-efi`
+  with a dead cursor — checkpoint builds narrated it to `1b opened?`, i.e. hung
+  inside `open_protocol_exclusive` on the GOP (Insyde firmware; OVMF says yes).
+  Fix: `GetProtocol` opens for GOP + LoadedImage (read-only handshake, dropped
+  before ExitBootServices) — the lightest open is the honest one. Narration +
+  paint_mark changes were debug-only and reverted; committed diff is the two
+  opens plus comments. Note: a `below` run failed mid-gate during this work
+  from stray QEMU processes (empty transcripts, wandering FAILs) — `pkill`,
+  rerun green. Flake, not code; the gate's QEMU-flake history stands.
+- Proof: QEMU EFI transcript byte-identical (`cerne-efi` … `well 228 MiB`);
+  `below ok` full suite after. Iron re-test pending (stick round-trip).
+- Git: this tree. Modified: `kernel/src/efi_main.rs` only.
+- Next: iron verdict on the GetProtocol build; then GOP text (VGA font) so live
+  iron is never blind again.
+- Do not: exclusive-open firmware-owned protocols for a mere query.
+
+---
+
 ## 2026-10-01 — Gleed — G2b stow (ink holds on iron, G19)
 
 - Did: `kernel/src/ata.rs` (new — PIO LBA28 read/write, master, poll + SRST×3, cache flush, mirrors the loader's rite; paved path only, floating bus refuses). `stow` call 9: exact-measure re-ink of leaves (sparks refuse); RAM copy + leaf xor + cairn sum, ATA-write touched sectors with ATA re-read compare, rewrite + verify LBA0, `-EIO` on any mismatch. `tale` v2: tells first-leaf (G18 kept), then gleans the slate — wax it stows `ink holds` and says `stowed`, inked it says `kept`. Runner copies sparks to private pool pages (the buf-in-cairn strike, twice learned: tale's buf wrote its own record and broke the next verify — first the open cache, then the persisted sum; floors must be private). A mid-stow panic leaves sector-new/KMAP-old and the next boot refuses `no-cairn` instead of reading corrupt (seen live, kept as designed). Below `tale` step grows a second boot on the same file: boot1 `stowed`, boot2 `kept` without `stowed` (anti-grep — re-stowing would prove nothing).
