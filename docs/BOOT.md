@@ -67,8 +67,8 @@ kindling: still only a spark
 ```
 
 `make serial-uefi` copies `EFI/BOOT/CAIRN` next to `BOOTX64.EFI`. A missing
-cairn skips the `cairn` line; Grove still paints. After the well, `ingle`
-runs when the cairn planted.
+cairn skips the `cairn` line; Grove still paints, then the glass says
+`no ingle`. After the well, `ingle` runs when the cairn planted.
 
 ConOut (the laptop panel) carries `cerne-efi`, the Grove sigil, `image` /
 `cairn` / `gop` / `exit`. COM1 carries `fae-kernel` and the well line. OVMF

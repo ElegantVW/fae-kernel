@@ -467,7 +467,7 @@ pub fn run_ingle(cup_top: u64) -> ! {
 }
 
 /// Paved path: light `ingle` when the cairn has it. Missing cairn or spark
-/// is a quiet halt — never a FAIL line on the happy kernel.
+/// writes `no ingle` on glass + serial — never a FAIL line on the happy kernel.
 #[allow(dead_code)]
 pub fn light_ingle(cup_top: u64) -> ! {
     crate::gdt::set_kernel_stack(cup_top);
@@ -482,6 +482,9 @@ pub fn light_ingle(cup_top: u64) -> ! {
             }
         }
     }
+    serial_print("kindling: no ingle\n");
+    let msg = b"no ingle\n";
+    crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
     hcf();
 }
 

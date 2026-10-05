@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## efi-cairn-g25b (2026-10-05)
+
+- Iron (IdeaPad Insyde) showed Grove twice and nothing else: GOP covers ConOut breadcrumbs, and the cairn never planted. LoadedImage.device() often has no SimpleFileSystem (USB child does). Walk: GetProtocol on the device, LocateDevicePath on that path, LocateDevicePath on LoadedImageDevicePath (the HD node lives on the file path), then every SimpleFileSystem handle until `CAIRN` opens. Nested `EFI/BOOT/CAIRN` open. AllocateAddress 1MB may refuse 512 KiB; shrink to 64/16/4 KiB, else AnyPages + copy after EBS when the slot is free and not the running image. Miss writes `no ingle` on the glass (no COM1). `make below` EFI (no CAIRN) greps that line.
+
 ## ingle-g25 (2026-10-05)
 
 - Paved boots carry `ingle`. `make image` packs `--spark ingle` and writes `spark/cairn.bin` (`--cairn-out`). After the well, the happy kernel calls `light_ingle`: missing cairn or spark is a quiet halt, never a FAIL line.

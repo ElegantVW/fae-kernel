@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → loader (off the disk) → Kindling spark. House light (G15–G25) is on.
+Firmware → loader (off the disk) → Kindling spark. House light (G15–G25b) is on.
 Linux ELF waits on its own gate. This file staying green is still the law.
 
 Run: `make below`  
@@ -35,6 +35,7 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G23 | Keyboard — PS/2 8042, IRQ1, house `read` fd 0 | ingle in `make below` | yes |
 | G24 | Ingle — greeter spark waits for a line, says the fire is lit | ingle in `make below` / `make test` | yes |
 | G25 | Paved ingle — BIOS `make image` packs the spark; EFI plants `EFI/BOOT/CAIRN` | efi-ingle in `make below` | yes |
+| G25b | Iron cairn — walk USB child FS + LoadedImageDevicePath; glass `no ingle` on miss | efi greps `no ingle`; efi-ingle still greets | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 

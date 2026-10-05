@@ -290,6 +290,11 @@ printf '%s\n' "$got" | grep -Fx -q "exit" || {
   echo "$got" | tail -16
   exit 1
 }
+printf '%s\n' "$got" | grep -F -q "kindling: no ingle" || {
+  echo "FAIL efi no-ingle"
+  echo "$got" | tail -16
+  exit 1
+}
 echo "ok   efi"
 
 echo "---- efi-ingle ----"

@@ -66,12 +66,17 @@ cause line, house line, `hlt`. Never half a jump. The kernel re-verifies;
 the loader only carries.
 
 The BIOS loader lays the cairn from disk when packed. EFI plants the same
-bytes from `\EFI\BOOT\CAIRN` (GetProtocol SimpleFileSystem on the loaded
-image's device, AllocateAddress `0x100000`, then KMAP scratch at `0x8400`
-after ExitBootServices). `scripts/mkimg.py --cairn-out` writes that blob.
-A missing file or a failed alloc is honest — Grove still paints, `glean` /
-`spawn` / `light_ingle` refuse with `-ENODEV` or a quiet halt. Limine still
-has no cairn.
+bytes from `\EFI\BOOT\CAIRN`: GetProtocol SimpleFileSystem on the loaded
+image's device, `LocateDevicePath` on that device path, then on the
+loaded-image device path (USB parent is too short; the file path includes
+the HD node), then every SimpleFileSystem handle until `CAIRN` opens
+(never exclusive — Insyde hung on exclusive GOP). Nested `EFI` / `BOOT`
+/ `CAIRN` opens if a path string misses. AllocateAddress `0x100000`
+(512 KiB, then 64/16/4 KiB if firmware refuses), else AnyPages and copy
+after ExitBootServices when that slot is conventional/loader and not the
+running image. KMAP scratch at `0x8400` after EBS.
+`scripts/mkimg.py --cairn-out` writes the blob. A miss is honest — Grove
+still paints, the glass says `no ingle`. Limine still has no cairn.
 
 ## Laying down (stow, G2b)
 
