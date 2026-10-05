@@ -5,6 +5,7 @@ mod ata;
 mod cairn;
 mod cpu;
 mod gdt;
+mod glass;
 mod house;
 mod idt;
 mod mm;
@@ -16,7 +17,7 @@ use core::fmt::Write;
 use limine::BaseRevision;
 use limine::request::{FramebufferRequest, RequestsEndMarker, RequestsStartMarker};
 
-use start::{Serial, paint_mark, serial_print, start};
+use start::{Serial, serial_print, start};
 
 #[used]
 #[unsafe(link_section = ".requests")]
@@ -45,7 +46,14 @@ unsafe extern "C" fn kmain() -> ! {
     if let Some(resp) = FRAMEBUFFER_REQUEST.get_response()
         && let Some(fb) = resp.framebuffers().next()
     {
-        paint_mark(fb.addr(), fb.width(), fb.height(), fb.pitch(), fb.bpp());
+        crate::glass::offer_gop(
+            fb.addr() as u64,
+            fb.width(),
+            fb.height(),
+            fb.pitch(),
+            fb.bpp(),
+            true,
+        );
     }
     start(None)
 }

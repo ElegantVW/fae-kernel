@@ -1,5 +1,31 @@
 # fae-kernel changelog
 
+## iron-grove-g22 (2026-10-05)
+
+- EFI ConOut prints the Grove sigil + title *before* any GOP open. IdeaPad 3 15ITL6 (Insyde) froze after `cerne-efi` inside GOP; the panel is the only transcript. Breadcrumbs `image` / `gop` / `exit`. GOP paint still happens before `ExitBootServices` when the open returns.
+- `serial_put` gives up if COM1 LSR never ready (no UART on the laptop). GOP show is glyphs only — no full-framebuffer UC fill.
+- `make below` EFI greps `Grove` / `image` / `exit`. `make test` runs the throwaway VMs (happy..spawn) plus grove. Stick update is the iron verdict.
+
+## grove-g21 (2026-10-05)
+
+- Glass: after the well, Kindling paints the Grove glyph (Violet) and the title `Grove` (Parchment). BIOS writes VGA `B8000` under the firmware flame; EFI maps GOP UC (same rite as the LAPIC window) and blits the 8×16. Kindling flame is first on GOP (firmware never ran there).
+- `write` fd 1/2 also paints the glass. Serial ceremony unchanged. `flush` still `-EAGAIN`.
+- `make below` += `grove` (G21). Suite-as-guest stays later (no Linux ABI, no keyboard).
+
+## spawn-g20 (2026-10-05)
+
+- `spawn` (house call 5) is real: named cairn spark, private pool copy (64 KiB law), own 64 KiB cup, own CR3 (clone of the kernel map, U/S only on spark+cup, kernel 2M supervisor, guard not-present). v0 replaces the light. ELF later.
+- Second spark `wick` tells `second-leaf` (`the cup is its own`) then `exit(0)`. Feature `spawn-test` + `spawn-bin`. House-test: null spawn is `-EPERM`; a missing name is `-ENODEV` or `-ENOENT`.
+- Tale/init stay on the shared all-U/S map. `grant`/`flush` still `-EAGAIN`. `make below` += `spawn` (G20).
+
+## well-3g + font (2026-10-05)
+
+- Firmware maps 2 MiB pages through 3 GiB (`PDPT[0..2]` at `0x3000` / `0xD000` / `0xE000`). `PDPT[3]` stays empty for the LAPIC window. 1025M and 2G used to `#PF` (`trap 14`) because one PD only covers 1 GiB.
+- `probe_cap` walks live CR3 present-bits before the write/read; unmapped RAM stops the walk. A `#PF` during probe is a fail, not a well size.
+- VGA 8×16 into plane 2 (`scripts/mkfont.py` → `fw/font8x16.bin`). Readback of `'*'` sets FMAP `0x8020`; miss prints `cerne-fw: no font`. Happy serial unchanged.
+- `make audit` += 1025M (`well 1024 MiB`) + 2G (`well 2048 MiB`). `make below` += `font`.
+- Doc truth: house light G15–G19 was on; Linux ELF / `spawn` still shut at that sitting. BOOT EFI spark line, syscalls header, SECURITY transcript, cairn `STOW` comment.
+
 ## stow-g2b (2026-10-01)
 
 - Ink holds on iron: kernel ATA PIO read/write, `stow` call 9 (exact re-ink; sectors + LBA0 rewritten and ATA-verified, `-EIO` on mismatch). `tale` v2 stows the slate on boot1 (`stowed`), reads it `kept` on boot2. Sparks run from private pool copies (buf-in-cairn, twice learned). `make below` += `stow` (G19) green.

@@ -84,9 +84,15 @@ growing leaves is later work; ink is for leaves, sparks refuse). The rite:
 Sparks run from a private pool copy, never in place: a spark's buf lives
 inside its own record, and running in place lets its writes perturb the image
 the next boot verifies — the floor must be its own (64 KiB law, contiguity
-asserted, `tale FAIL scattered` otherwise). A panic mid-stow leaves the disk
-half-inked (sector new, KMAP old) — the next boot then refuses `no-cairn`
-instead of reading corrupt. That refusal is the design working.
+asserted, `tale FAIL scattered` / `spawn FAIL 4` otherwise). `spawn` (house
+call 5) copies the named spark the same way, then clones the kernel map onto
+a new CR3, strips U/S from kernel leaves, and grants user only the spark and
+a 64 KiB cup (one guard page not-present). v0 replaces the light — it does
+not return to the caller. ELF is a format later, not a Linux ABI.
+
+A panic mid-stow leaves the disk half-inked (sector new, KMAP old) — the
+next boot then refuses `no-cairn` instead of reading corrupt. That refusal
+is the design working.
 
 ## Words (house voice, no collisions)
 
@@ -94,6 +100,9 @@ instead of reading corrupt. That refusal is the design working.
 - **leaf** — a file (the Grove's leaves). Flat names, no paths yet.
 - **spark** — an executable leaf (small fire that runs at CPL3).
 - **glean** — house call 8: gather a leaf's bytes.
-- **stow** — reserved: house call 9 (lay bytes down; G2b write path).
+- **stow** — house call 9 (lay bytes down; G2b write path).
+- **spawn** — house call 5 (named spark, private pages, own cup + CR3).
 - **tale** — the first spark: speaks a leaf, then exits.
 - **first-leaf** — the first leaf, packed at cast time.
+- **wick** — the second spark: tells `second-leaf` from its own cup, then exits.
+- **second-leaf** — `the cup is its own`.

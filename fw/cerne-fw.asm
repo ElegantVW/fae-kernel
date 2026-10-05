@@ -18,12 +18,24 @@ start:
         mov     sp, 0x7000
 
         call    vga_mode3
+        call    vga_font
         call    vga_lilac
         call    serial_init16
         mov     si, msg_ansi
         call    puts16
         mov     si, msg_fw
         call    puts16
+        xor     ax, ax
+        mov     ds, ax
+        cmp     byte [0x8020], 1
+        je      .font_said
+        mov     ax, 0xF000
+        mov     ds, ax
+        mov     si, msg_nofont
+        call    puts16
+.font_said:
+        mov     ax, 0xF000
+        mov     ds, ax
         call    ivt16
         call    pic_init
         call    cmos_ram
@@ -173,6 +185,77 @@ vga_mode3:
         mov     al, 0x20
         out     dx, al
         popad
+        ret
+
+; 8×16 into plane 2 so logo.txt is glyphs, not a blank cell.
+; Read back '*' (0x2A); 0x8020 = 1 on match, 0 on miss (cerne-fw: no font).
+vga_font:
+        push    ax
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    es
+        push    ds
+        xor     ax, ax
+        mov     ds, ax
+        mov     byte [0x8020], 0
+        mov     dx, 0x3C4
+        mov     ax, 0x0402                      ; map mask = plane 2
+        out     dx, ax
+        mov     ax, 0x0704                      ; seq memory mode: no odd/even
+        out     dx, ax
+        mov     dx, 0x3CE
+        mov     ax, 0x0204                      ; read map = plane 2
+        out     dx, ax
+        mov     ax, 0x0005                      ; GC mode 0, no odd/even
+        out     dx, ax
+        mov     ax, 0x0006                      ; misc: A0000
+        out     dx, ax
+        mov     ax, 0xA000
+        mov     es, ax
+        xor     di, di
+        mov     ax, 0xF000
+        mov     ds, ax
+        mov     si, font8x16
+        mov     cx, 128
+.copy_char:
+        push    cx
+        mov     cx, 16
+        rep     movsb
+        add     di, 16                          ; VGA glyph slot is 32 bytes
+        pop     cx
+        loop    .copy_char
+        mov     si, font8x16 + 0x2A * 16
+        mov     di, 0x2A * 32
+        mov     cx, 16
+        repe    cmpsb
+        pushf
+        mov     dx, 0x3C4
+        mov     ax, 0x0302                      ; map mask planes 0+1
+        out     dx, ax
+        mov     ax, 0x0304                      ; odd/even on
+        out     dx, ax
+        mov     dx, 0x3CE
+        mov     ax, 0x0004
+        out     dx, ax
+        mov     ax, 0x1005
+        out     dx, ax
+        mov     ax, 0x0E06                      ; B8000, odd/even, text
+        out     dx, ax
+        popf
+        jne     .font_done
+        xor     ax, ax
+        mov     ds, ax
+        mov     byte [0x8020], 1
+.font_done:
+        pop     ds
+        pop     es
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     ax
         ret
 
 vga_lilac:
@@ -547,6 +630,12 @@ pm32:
         mov     dword [0x1000], 0x2003
         mov     dword [0x2000], 0x3003
         mov     dword [0x3000], 0x4003          ; PD[0] → 4K PT
+        ; Extra PDs for 1–2 GiB and 2–3 GiB. PDPT[3] stays empty so Kindling
+        ; can plant the LAPIC window. 0xD000 / 0xE000 sit after the loader slot.
+        mov     edi, 0xD000
+        mov     ecx, 0x800                      ; 8 KiB
+        xor     eax, eax
+        rep     stosd
         mov     edi, 0x4000
         xor     ebx, ebx
         mov     ecx, 512
@@ -563,24 +652,52 @@ pm32:
         add     edi, 8
         add     ebx, 0x1000
         loop    .fillpt
+        ; n2m = round_up(ram_end, 2M) / 2M. Cap at 3 GiB (1536 pages from 0).
         mov     eax, [0x8008]
         add     eax, 0x1FFFFF
         shr     eax, 21
         cmp     eax, 2
         jb      .skip2m
-        dec     eax
-        cmp     eax, 511
-        jbe     .cap
-        mov     eax, 511
-.cap:
-        mov     ecx, eax
-        mov     edi, 0x3008
-        mov     eax, 0x200000 | 0x83
-.fillpd:
-        mov     [edi], eax
-        add     edi, 8
-        add     eax, 0x200000
-        loop    .fillpd
+        cmp     eax, 1536
+        jbe     .n2m_ok
+        mov     eax, 1536
+.n2m_ok:
+        mov     esi, 1                          ; 2M-page index (PD[0] is the 4K PT)
+        mov     ebx, 0x200000
+.fill2m:
+        cmp     esi, eax
+        jae     .skip2m
+        mov     edx, esi
+        shr     edx, 9                          ; gb = i / 512
+        cmp     edx, 3
+        jae     .skip2m                         ; never PDPT[3]
+        push    eax
+        cmp     edx, 0
+        jne     .gb1
+        mov     edi, 0x3000
+        jmp     .gotpd
+.gb1:
+        cmp     edx, 1
+        jne     .gb2
+        mov     edi, 0xD000
+        jmp     .gotpd
+.gb2:
+        mov     edi, 0xE000
+.gotpd:
+        mov     eax, edi
+        or      eax, 3
+        shl     edx, 3
+        mov     [0x2000 + edx], eax             ; PDPT[gb] = pd | P | RW
+        mov     edx, esi
+        and     edx, 511
+        shl     edx, 3
+        mov     eax, ebx
+        or      eax, 0x83                       ; P | RW | PS
+        mov     [edi + edx], eax
+        pop     eax
+        add     ebx, 0x200000
+        inc     esi
+        jmp     .fill2m
 .skip2m:
 
         mov     eax, 0x1000
@@ -786,6 +903,10 @@ msg_miss:    db "kindling: no guest at 0x200000", 10, 0
 msg_fw_trap: db "cerne-fw: trap ", 0
              db "kindling remembers the reset", 0
              db "the jump is the vow", 0
+msg_nofont:  db "cerne-fw: no font", 10, 0
+
+font8x16:
+        incbin  "fw/font8x16.bin"
 
 logo:   db "  *", 10, " /|\", 10, "/ | \", 10, "  |", 10, " / \", 10, "/   \", 10, 0
 
@@ -800,8 +921,8 @@ crtc:   db 0x5F,0x4F,0x50,0x82,0x55,0x81,0xBF,0x1F
         db 0x00,0x4F,0x0D,0x0E,0x00,0x00,0x00,0x50
         db 0x9C,0x0E,0x8F,0x28,0x1F,0x96,0xB9,0xA3,0xFF
 gc:     db 0x00,0x00,0x00,0x00,0x00,0x10,0x0E,0x00,0xFF
-ac:     db 0x00,0x01,0x02,0x03,0x04,0x05,0x14,0x07
-        db 0x38,0x39,0x3A,0x3B,0x3C,0x3D,0x3E,0x3F
+ac:     db 0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07
+        db 0x08,0x09,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F
         db 0x0C,0x00,0x0F,0x08,0x00
 
         align   8

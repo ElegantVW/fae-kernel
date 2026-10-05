@@ -78,6 +78,7 @@ Do not propose these as new creature names. They are already working.
 | Cerne | Older kernel proposal; still in `fw/cerne-fw.asm`, serial `cerne-fw` / `cerne-ld` / `cerne-efi` |
 | Korda | Vanguarda Arch guest — never a Kindling signer |
 | Pixie, Kur, Murmur, Wisp | Taken familiars / eggs |
+| wick | Second Gleam spark (G20). Firelighting; not a signer |
 | Seal, Rift, Goblin, Siren, Imp, Magpie, Ether, Scry, Spellbook, Scroll | Suite apps |
 | Aegis, Bulwark, Imbue, Menagerie, Fairy Lantern | Suite / engines |
 | Alchemy, Grimoire, Abacus, Quests, Hourglass, Almanac, Eye, Vault, Reflection, Tome, Zen, Tick, Summon, Purity, Sentinel, Ward | Suite |

@@ -6,6 +6,7 @@ mod ata;
 mod cairn;
 mod cpu;
 mod gdt;
+mod glass;
 mod house;
 mod idt;
 mod mm;
@@ -14,7 +15,7 @@ mod timer;
 
 use core::fmt::Write;
 use mm::Hint;
-use start::{Serial, serial_print, start};
+use start::{serial_print, start, Serial};
 
 unsafe extern "C" {
     static __kernel_end: u8;

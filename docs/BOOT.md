@@ -49,9 +49,20 @@ OVMF (other people's firmware, QEMU's copy of EDK2) loads **our** `BOOTX64.EFI`.
 
 ```
 cerne-efi
+\  |  /
+ \| |/ 
+---+---
+ / | \ 
+/  |  \
+Grove
+image
+gop
+exit
 fae-kernel
-cerne: still only a spark
+kindling: still only a spark
 ```
+
+ConOut (the laptop panel) carries `cerne-efi`, the Grove sigil, `image` / `gop` / `exit`. COM1 carries `fae-kernel` and the well line. OVMF mirrors ConOut onto QEMU serial; IdeaPad does not.
 
 ## Limine ISO (`make serial`)
 

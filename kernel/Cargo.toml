@@ -14,6 +14,7 @@ house-test = []
 ring3-test = []
 reclaim-test = []
 tale-test = []
+spawn-test = []
 
 [dependencies]
 limine = "0.5"

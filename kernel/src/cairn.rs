@@ -4,11 +4,10 @@
 //! partial bytes. v0 rides the paved path only — EFI/Limine hands have no
 //! cairn and `glean` there refuses `-ENODEV`, loudly.
 
-#[cfg(feature = "tale-test")]
-use crate::start::{hcf, serial_print};
+use crate::start::{hcf, serial_print, serial_u64};
 
 pub const GLEAN: u64 = 8;
-pub const STOW: u64 = 9; // shut until the G2b write path
+pub const STOW: u64 = 9;
 
 pub const CAIRN_RAM: u64 = 0x100000;
 const KMAP_RAM: u64 = 0x8400;
@@ -193,8 +192,8 @@ fn take_name(name_ptr: u64) -> Result<([u8; 64], usize), u64> {
 
 /// Gather a leaf's bytes: `rdi` = name, `rsi` = buf, `rdx` = len (cap 1 MiB).
 /// Returns bytes copied (a short read when the leaf is longer is honest, not
-/// an error) or `-errno`. v0 trusts mapped RAM for pointers (shared all-U/S
-/// map); realms (G4) will check callers properly.
+/// an error) or `-errno`. v0 trusts mapped RAM for pointers; spawn's realm
+/// still lets the kernel copy (CPL0 ignores U/S). User pointer checks wait.
 pub fn glean(name_ptr: u64, buf: u64, len: u64) -> u64 {
     if buf == 0 || len == 0 || len > MAX_DATA {
         return err(EPERM);
@@ -326,6 +325,87 @@ pub fn stow(name_ptr: u64, buf: u64, len: u64) -> u64 {
         return err(EIO);
     }
     dl
+}
+
+fn spawn_fail(n: u64) -> ! {
+    serial_print("kindling: spawn FAIL ");
+    serial_u64(n);
+    serial_print("\n");
+    hcf();
+}
+
+/// Copy a spark out of the cairn onto a contiguous pool run. None = scattered.
+fn copy_out(src: u64, len: u64) -> Option<u64> {
+    let pages = len.div_ceil(4096);
+    let mut dst = 0u64;
+    let mut prev = 0u64;
+    let mut i = 0u64;
+    while i < pages {
+        let p = crate::mm::page_alloc();
+        if dst == 0 {
+            dst = p;
+        } else if p != prev + 4096 {
+            return None;
+        }
+        prev = p;
+        let mut j = 0u64;
+        while j < 4096 && i * 4096 + j < len {
+            let b = unsafe { ((src + i * 4096 + j) as *const u8).read_volatile() };
+            unsafe { ((p + j) as *mut u8).write_volatile(b) };
+            j += 1;
+        }
+        i += 1;
+    }
+    Some(dst)
+}
+
+/// House call 5: named cairn spark onto private pages, own cup, own CR3.
+/// Never returns on success. v0 replaces the light.
+pub fn spawn(name_ptr: u64) -> u64 {
+    let (name, nl) = match take_name(name_ptr) {
+        Ok(v) => v,
+        Err(e) => return err(e),
+    };
+    let Some(c) = open() else {
+        return err(ENODEV);
+    };
+    let (src, len) = match find(&c, &name[..nl], 1) {
+        Ok(v) => v,
+        Err(e) => return err(e),
+    };
+    if len == 0 || len > 65536 {
+        return err(EPERM);
+    }
+    let Some(dst) = copy_out(src, len) else {
+        spawn_fail(4);
+    };
+    let realm = crate::mm::place_spark(dst, len);
+    crate::house::enter_user_in(realm.spark, realm.cup_top, realm.cr3);
+}
+
+/// Loose `wick`: verify, copy, private CR3 + cup, enter at CPL3.
+/// Never returns.
+#[cfg(feature = "spawn-test")]
+pub fn run_spawn(cup_top: u64) -> ! {
+    crate::gdt::set_kernel_stack(cup_top);
+    let (src, len) = {
+        let Some(c) = open() else {
+            spawn_fail(1);
+        };
+        match find(&c, b"wick", 1) {
+            Ok(v) => v,
+            Err(_) => spawn_fail(2),
+        }
+    };
+    if len == 0 || len > 65536 {
+        spawn_fail(3);
+    }
+    let Some(dst) = copy_out(src, len) else {
+        spawn_fail(4);
+    };
+    let realm = crate::mm::place_spark(dst, len);
+    serial_print("kindling: spawn ok\n");
+    crate::house::enter_user_in(realm.spark, realm.cup_top, realm.cr3);
 }
 
 /// Loose the `tale` spark: verify, copy it out of the cairn onto private

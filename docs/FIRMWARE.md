@@ -9,14 +9,21 @@
 | `0x0000` | IVT (we fill 0–31) |
 | `0x1000` | PML4 |
 | `0x2000` | PDPT |
-| `0x3000` | PD |
+| `0x3000` | PD for **0–1 GiB** (`PDPT[0]`; `PD[0]` is the 4K PT) |
 | `0x4000` | PT for **0–2 MiB** (4 KiB pages) |
 | `0x5000` | 32-bit IDT (until long mode) |
 | `0x6000` | 64-bit IDT (until Kindling `lidt`) |
 | `0x7000` | stack (grows down) |
 | `0x8000` | FMAP |
+| `0x8020` | font readback (`1` = plane 2 took `'*'`) |
 | `0x8400` | KMAP scratch (the loader reads disk LBA 0 here) |
 | `0x9000` | `cerne-ld`, the loader — 16KiB slot from disk LBA 1..32 |
+| `0xD000` | PD for **1–2 GiB** (`PDPT[1]`, when CMOS needs it) |
+| `0xE000` | PD for **2–3 GiB** (`PDPT[2]`, when CMOS needs it) |
+
+`PDPT[3]` stays empty so Kindling can plant the LAPIC window. RAM past 3 GiB
+is not mapped this sitting; `probe_cap` stops at the first not-present entry
+instead of taking a `#PF`.
 
 Do not put Kindling's cup in `0–4 MiB`. `0x8400` and `0x9000–0xCFFF` belong to
 the loader and are free RAM again once the guest takes the jump.
@@ -42,13 +49,18 @@ Kindling reloads its own GDT (CS `0x08`) on the BIOS path.
 | 12 | u32 | `nreg` (2) |
 | 16 | u32+u32 | region 0: `0`, `0x9F000` |
 | 24 | u32+u32 | region 1: `0x100000`, `ram_end - 0x100000` |
+| 32 | u8 | font ok (`1` after plane-2 readback of `'*'`) |
 
-Never a usable region covering `0xA0000–0xFFFFF`.
+Never a usable region covering `0xA0000–0xFFFFF`. Byte 32 is not in the
+checksum — it is a side flag, not a region.
 
 ## Map
 
 - **0–2 MiB:** 4 KiB pages. `0xA0000–0xFFFFF` present with PCD+PWT (hole / ROM / VGA).
-- **2 MiB–ram_end:** 2 MiB pages.
+- **2 MiB–ram_end:** 2 MiB pages, across `PDPT[0..2]` (cap 3 GiB). `PDPT[3]` free.
+- VGA plane 2: 8×16 ASCII (`fw/font8x16.bin`, flint via `scripts/mkfont.py`).
+  Readback miss prints `cerne-fw: no font` (happy serial stays quiet).
+  Attribute controller 0–15 is identity so DAC index 13 is Lilac.
 
 ## Loader (`ld/cerne-ld.asm`)
 

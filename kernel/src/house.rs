@@ -16,7 +16,11 @@ pub const GRANT: u64 = 6;
 pub const FLUSH: u64 = 7;
 
 const EPERM: u64 = 1;
+#[cfg(feature = "house-test")]
+const ENOENT: u64 = 2;
 const EAGAIN: u64 = 11;
+#[cfg(feature = "house-test")]
+const ENODEV: u64 = 19;
 const ENOSYS: u64 = 38;
 
 fn err(n: u64) -> u64 {
@@ -52,7 +56,11 @@ pub fn dispatch(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
         }
         WRITE => {
             if a0 == 1 || a0 == 2 {
-                write_serial(a1 as *const u8, a2)
+                let n = write_serial(a1 as *const u8, a2);
+                if (n as i64) >= 0 {
+                    crate::glass::put_bytes(a1 as *const u8, a2);
+                }
+                n
             } else {
                 err(EPERM)
             }
@@ -64,7 +72,8 @@ pub fn dispatch(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
         TIME => crate::timer::ms(),
         crate::cairn::GLEAN => crate::cairn::glean(a0, a1, a2),
         crate::cairn::STOW => crate::cairn::stow(a0, a1, a2),
-        SPAWN | GRANT | FLUSH => err(EAGAIN),
+        SPAWN => crate::cairn::spawn(a0),
+        GRANT | FLUSH => err(EAGAIN),
         _ => err(ENOSYS),
     }
 }
@@ -80,7 +89,9 @@ pub extern "C" fn house_entry(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
 /// On success returns; on failure halts (never returns).
 #[cfg(feature = "house-test")]
 pub fn self_test() {
-    // Direct: yield ok, unknown refuses, wrong fd refuses, shut calls wait.
+    // Direct: yield ok, unknown refuses, wrong fd refuses, spawn null
+    // refuses. A missing name is `-ENODEV` (no cairn) or `-ENOENT` (cairn
+    // packed, no such spark) — never success, never `-EAGAIN`.
     let mut fail = 0u64;
     if dispatch(YIELD, 0, 0, 0) != 0 {
         fail = 1;
@@ -91,8 +102,13 @@ pub fn self_test() {
     if dispatch(WRITE, 7, 0, 0) != err(EPERM) {
         fail = 3;
     }
-    if dispatch(SPAWN, 0, 0, 0) != err(EAGAIN) {
+    if dispatch(SPAWN, 0, 0, 0) != err(EPERM) {
         fail = 4;
+    }
+    let ghost = b"x\0";
+    let g = dispatch(SPAWN, ghost.as_ptr() as u64, 0, 0);
+    if g != err(ENODEV) && g != err(ENOENT) {
+        fail = 13;
     }
     // Real gate: `int 0xE0` yield must return 0 in rax.
     let ret: u64;
@@ -198,6 +214,41 @@ unsafe fn pin(port: u16) -> u8 {
 // --- CPL3 entry: inits and sparks alike ride this iretq. ---
 // RSP0 must already point at the kernel cup (caller sets it), so CPL3
 // interrupts land home. Never returns.
+//
+// `enter_user_in` loads the realm CR3 then iretq. Tale/init keep
+// `enter_user` on the shared map (static USTACK, live CR3).
+
+/// Drop to CPL3 at `entry` with this user stack and CR3. Never returns.
+pub fn enter_user_in(entry: u64, ustack_top: u64, cr3: u64) -> ! {
+    unsafe {
+        // NOTE: addresses ride fixed regs — never `in(reg)` (it may pick
+        // RSP), never `push {sym}` (that pushes the qword AT the symbol;
+        // there is no push-imm64).
+        core::arch::asm!(
+            "mov cr3, r9",
+            "mov ax, 0x23",
+            "mov ds, ax",
+            "mov es, ax",
+            "xor eax, eax",
+            "mov fs, ax",
+            "mov gs, ax",
+            "push {ss}",
+            "push r10",
+            "push {rflags}",
+            "push {cs}",
+            "push r11",
+            "iretq",
+            ss = const crate::gdt::UDATA_RPL3,
+            rflags = const 0x202u64,
+            cs = const crate::gdt::UCODE_RPL3,
+            in("r9") cr3,
+            in("r10") ustack_top,
+            in("r11") entry,
+            options(noreturn),
+        );
+    }
+}
+
 #[cfg(any(feature = "ring3-test", feature = "tale-test"))]
 static mut USTACK: [u8; 16384] = [0; 16384];
 
@@ -205,9 +256,6 @@ static mut USTACK: [u8; 16384] = [0; 16384];
 pub fn enter_user(entry: u64) -> ! {
     let ustack_top = (core::ptr::addr_of!(USTACK) as u64 + 16384) & !0xF;
     unsafe {
-        // NOTE: addresses ride fixed regs — never `in(reg)` (it may pick
-        // RSP), never `push {sym}` (that pushes the qword AT the symbol;
-        // there is no push-imm64).
         core::arch::asm!(
             "mov ax, 0x23",
             "mov ds, ax",

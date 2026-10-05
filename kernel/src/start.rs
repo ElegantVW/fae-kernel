@@ -36,9 +36,23 @@ pub fn serial_init() {
     serial_print("\x1b[95m");
 }
 
+// IdeaPad has no 0x3F8. If LSR never says THR empty, one unbounded wait
+// is a silent hang after ExitBootServices (ConOut already dead).
+static mut SERIAL_LIVE: bool = true;
+const SERIAL_SPINS: u32 = 100_000;
+
 fn serial_put(b: u8) {
     unsafe {
+        if !core::ptr::addr_of!(SERIAL_LIVE).read() {
+            return;
+        }
+        let mut n = 0u32;
         while inb(COM1 + 5) & 0x20 == 0 {
+            n = n.saturating_add(1);
+            if n >= SERIAL_SPINS {
+                core::ptr::addr_of_mut!(SERIAL_LIVE).write(false);
+                return;
+            }
             core::hint::spin_loop();
         }
         outb(COM1, b);
@@ -86,25 +100,6 @@ pub(crate) fn serial_u64(n: u64) {
     let _ = Serial.write_str(core::str::from_utf8(&buf[i..]).unwrap());
 }
 
-/// Optional GOP/Limine framebuffer. Null addr skips the mark.
-#[allow(dead_code)]
-pub fn paint_mark(addr: *mut u8, width: u64, height: u64, pitch: u64, bpp: u16) {
-    if addr.is_null() || bpp < 32 {
-        return;
-    }
-    let w = width.min(64);
-    let h = height.min(24);
-    let pix: u32 = 0x00c4_4d7a;
-    for y in 0..h {
-        for x in 0..w {
-            let off = (y * pitch + x * 4) as usize;
-            unsafe {
-                addr.add(off).cast::<u32>().write_volatile(pix);
-            }
-        }
-    }
-}
-
 /// Ceremony first. Then, if `hint` is Some, Kindling takes the well and a cup-stack.
 pub fn start(hint: Option<Hint>) -> ! {
     serial_init();
@@ -112,6 +107,7 @@ pub fn start(hint: Option<Hint>) -> ! {
     serial_print("kindling: still only a spark\n");
     crate::cpu::mask_pic();
     if matches!(&hint, Some(h) if !h.trust_map) {
+        crate::glass::offer_vga();
         crate::gdt::install();
     }
     crate::idt::install();
@@ -150,6 +146,8 @@ pub fn start(hint: Option<Hint>) -> ! {
             );
         }
     }
+    // Limine crutch: no well, firmware tables still hold the GOP.
+    crate::glass::show();
     hcf();
 }
 
@@ -167,6 +165,7 @@ unsafe extern "C" fn after_cup() -> ! {
     // Post-well, on our own tables: wire virtual-wire before any test that
     // reads it. Unconditional — harmless on images that never sleep.
     crate::timer::wire();
+    crate::glass::map_and_show();
     #[cfg(feature = "house-test")]
     crate::house::self_test();
     #[cfg(feature = "reclaim-test")]
@@ -176,11 +175,17 @@ unsafe extern "C" fn after_cup() -> ! {
     serial_print(" MiB · stack ");
     serial_u64(unsafe { core::ptr::addr_of!(CUP_KIB).read() });
     serial_print(" KiB cup\n");
-    #[cfg(feature = "tale-test")]
+    #[cfg(feature = "spawn-test")]
+    crate::cairn::run_spawn(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
+    #[cfg(all(feature = "tale-test", not(feature = "spawn-test")))]
     crate::cairn::run_tale(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
-    #[cfg(all(feature = "ring3-test", not(feature = "tale-test")))]
+    #[cfg(all(
+        feature = "ring3-test",
+        not(feature = "tale-test"),
+        not(feature = "spawn-test")
+    ))]
     crate::house::enter_init(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
-    #[cfg(not(any(feature = "ring3-test", feature = "tale-test")))]
+    #[cfg(not(any(feature = "ring3-test", feature = "tale-test", feature = "spawn-test")))]
     hcf();
 }
 

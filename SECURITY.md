@@ -11,7 +11,7 @@ No bounty program yet. This is personal/small-team software, not audited product
 ## Reporting
 
 Email: evenweaker@disroot.org with subject `[SECURITY] fae-kernel`.
-Include: version/tag, steps to reproduce, impact, logs with `FAE_DEBUG=1` if relevant.
+Include: version/tag, steps to reproduce, impact, the QEMU serial transcript (`make kindle` / `make below`).
 
 Promise: acknowledge within 7 days, fix + credit (or anonymous if you prefer).
 

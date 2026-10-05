@@ -17,7 +17,7 @@ OVMF_CODE ?= $(firstword $(wildcard \
 	/usr/share/OVMF/OVMF_CODE.fd))
 
 .PHONY: all kernel iso qemu serial serial-fw serial-uefi qemu-uefi-limine fw efi clean distclean
-.PHONY: help flint steel tinder hearth kindle hearth-see audit below below-ten image
+.PHONY: help flint steel tinder hearth kindle hearth-see audit below below-ten image test
 
 help:
 	@echo "Kindling — how one lights it"
@@ -31,10 +31,12 @@ help:
 	@echo "  make audit     several bowls; fail if a line is missing"
 	@echo "  make below     full below gate (audit+trap+fmap+fw-trap+efi)"
 	@echo "  make below-ten    gate × 10"
+	@echo "  make test      throwaway VMs (happy..spawn) + grove on VGA"
 	@echo "  make serial-uefi   other people's firmware, our clothes"
 	@echo "  make serial        borrowed match (Limine)"
 	@echo "  make distclean     the forest forgets; the seed does not"
 	@echo "mana: B thimble · KiB cup · MiB bowl · GiB well"
+	@echo "steel uses $(CARGO) (nightly). /usr/bin/cargo is the host stable."
 	@echo "a spark asks; the forest answers in tools"
 
 flint: fw/cerne-fw.bin
@@ -55,6 +57,15 @@ below:
 	sh scripts/below.sh
 below-ten:
 	@i=1; while [ $$i -le 10 ]; do echo "==== below $$i/10 ===="; sh scripts/below.sh || exit 1; i=$$((i+1)); done; echo "kindling: below ten ok"
+test:
+	sh scripts/test-vm.sh happy
+	sh scripts/test-vm.sh house
+	sh scripts/test-vm.sh ring3
+	sh scripts/test-vm.sh reclaim
+	sh scripts/test-vm.sh tale
+	sh scripts/test-vm.sh spawn
+	python3 scripts/check-grove.py
+	@echo "kindling: test ok"
 hearth-see: image
 	$(QEMU) -M pc -bios fw/cerne-fw.bin \
 		-drive if=ide,format=raw,file=$(IMAGE) \
@@ -65,7 +76,10 @@ all: iso
 kernel:
 	$(MAKE) -C kernel CARGO="$(CARGO)" limine-elf
 
-fw/cerne-fw.bin: fw/cerne-fw.asm
+fw/font8x16.bin: scripts/mkfont.py
+	python3 scripts/mkfont.py
+
+fw/cerne-fw.bin: fw/cerne-fw.asm fw/font8x16.bin
 	$(NASM) -f bin -o $@ $<
 	@test $$(stat -c%s $@) -eq 65536
 	python3 scripts/romsum.py $@

@@ -53,10 +53,15 @@ tale-bin:
 		$(CARGO) build --target $(RUST_TARGET) --bin fae-kernel-fw --features fw-link,house-test,tale-test --profile $(RUST_PROFILE)
 	$(OBJCOPY) -O binary $(NONE_DIR)/fae-kernel-fw kernel.tale.bin
 
+spawn-bin:
+	RUSTFLAGS="-C relocation-model=static" \
+		$(CARGO) build --target $(RUST_TARGET) --bin fae-kernel-fw --features fw-link,house-test,spawn-test --profile $(RUST_PROFILE)
+	$(OBJCOPY) -O binary $(NONE_DIR)/fae-kernel-fw kernel.spawn.bin
+
 efi:
 	$(CARGO) build --target $(UEFI_TARGET) --bin cerne-efi --features efi --profile $(RUST_PROFILE)
 	cp -v $(UEFI_DIR)/cerne-efi.efi BOOTX64.EFI
 
 clean:
 	$(CARGO) clean
-	rm -f kernel kernel.fw.bin kernel.trap.bin kernel.house.bin kernel.ring3.bin kernel.reclaim.bin kernel.tale.bin BOOTX64.EFI
+	rm -f kernel kernel.fw.bin kernel.trap.bin kernel.house.bin kernel.ring3.bin kernel.reclaim.bin kernel.tale.bin kernel.spawn.bin BOOTX64.EFI

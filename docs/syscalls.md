@@ -8,7 +8,7 @@ Living table. Numbers are the Linux x86_64 ABI. Status:
 | **stub** | returns `-ENOSYS` (honest) |
 | **done** | behaviour matches Linux enough for our tests |
 
-Phase 0 has **no user syscalls**. The kernel is still the only code. This file exists so we do not invent a private ABI by accident.
+Gleam speaks house calls (`docs/HOUSECALLS.md`, `int 0xE0`). This table is the Linux x86_64 ABI as **reference only** — numbers here are not wired, and a missing row stays missing until a real ELF traps. Do not treat a Linux `write` as the house `write`.
 
 | # | Name | Status | Test |
 |---|---|---|---|

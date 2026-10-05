@@ -6,8 +6,10 @@
 /kernel/kernel.ring3.bin
 /kernel/kernel.reclaim.bin
 /kernel/kernel.tale.bin
+/kernel/kernel.spawn.bin
 /kernel/BOOTX64.EFI
 /fw/cerne-fw.bin
+/fw/font8x16.bin
 /ld/cerne-ld.bin
 /spark/*.bin
 /kindling.img

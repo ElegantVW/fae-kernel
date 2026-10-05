@@ -4,7 +4,7 @@
 
 x86_64 kernel we write. The pink suite is userspace. Creature name: **Kindling** — you light kindling, not the log. Lighting tools *are* the build tools (`make help`: flint, steel, tinder, hearth, kindle).
 
-Phase 1 (memory: kindle well + cup-stack) is green. Phase 2 (user ELF `write`/`exit`) is shut until the spark is enough.
+Phase 1 (memory: kindle well + cup-stack) is green. House light (G15–G22) is on: CPL3 `write`/`exit`, tale, stow, spawn, Grove on the glass (ConOut before GOP on EFI). Linux ELF stays later; `grant`/`flush` stay shut.
 
 ## Look
 
@@ -13,14 +13,14 @@ Phase 1 (memory: kindle well + cup-stack) is green. Phase 2 (user ELF `write`/`e
 ![Guest VGA via VNC — palette + cursor only](assets/screenshots/kindle-vga.png)
 
 The VGA frame is honest: this QEMU has no GUI backend, so the shot comes
-from its VNC server. The firmware draws serial + lilac palette, not VGA
-text (font RAM stays empty) — hence background + cursor. Mark: `docs/identity/logo.txt`.
+from its VNC server. Firmware loads an 8×16 into plane 2, then draws
+`docs/identity/logo.txt` in lilac on night.
 
 ## What this is
 
-The column: **firmware (asm) → loader (asm, off the disk) → kernel (Rust)**. Gleam speaks house calls (`docs/HOUSECALLS.md` — `int 0xE0`: `yield`/`exit`/`write`/`sleep`/`time`/`glean`/`stow` + shut `spawn`/`grant`/`flush`); the first light runs at CPL3, the first spark tells a leaf and inks the slate (`docs/CAIRN.md`). The Linux table (`docs/syscalls.md`) is reference only.
+The column: **firmware (asm) → loader (asm, off the disk) → kernel (Rust)**. Gleam speaks house calls (`docs/HOUSECALLS.md` — `int 0xE0`: `yield`/`exit`/`write`/`sleep`/`time`/`glean`/`stow`/`spawn` + shut `grant`/`flush`); the first light runs at CPL3, the first spark tells a leaf and inks the slate, the second spark runs on its own cup and CR3 (`docs/CAIRN.md`). The Linux table (`docs/syscalls.md`) is reference only.
 
-- `fw/cerne-fw.asm`: 64KiB ROM, reset vector, GDT/IDT, VGA mode-3 by registers, PIC, CMOS RAM probe, 4K low pages + 2M rest, FMAP, ATA PIO — reads the loader from the boot disk (LBA 1..32, `'LDOK'` trailer) and hands over in long mode. Our BIOS: no `int 10h` / `int 15h`.
+- `fw/cerne-fw.asm`: 64KiB ROM, reset vector, GDT/IDT, VGA mode-3 by registers, 8×16 plane-2 font, PIC, CMOS RAM probe, 4K low pages + 2M rest through 3 GiB, FMAP, ATA PIO — reads the loader from the boot disk (LBA 1..32, `'LDOK'` trailer) and hands over in long mode. Our BIOS: no `int 10h` / `int 15h`.
 - `ld/cerne-ld.asm`: the loader, self-contained (own ATA PIO, own serial). Reads the KMAP (LBA 0), loads the kernel straight to `0x200000`, checks its XOR and `KNDL`, jumps `0x200004`. `scripts/mkimg.py` casts the disk (`make image`).
 - `kernel/src/`: `no_std` crate — `start`, `mm` (own page tables, bump well + frame pool, cup-stack, realms with guard), `gdt` (UCODE/UDATA + TSS), `idt` (house vector `0xE0`, PIT `0x20`, IST1 #DF), `house` (Gleam gate + CPL3 `init`), `timer` (PIT 100 Hz, BIOS), `cpu` (FPU/SSE, PIC), `fw_main` (BIOS path), `efi_main` (our `BOOTX64.EFI`), Limine entry.
 - Borrowed, attributed, not vendored: Limine bootloader (`v10.x-binary`, cloned at build) and OVMF/EDK2 (host QEMU firmware). The paved path (`make kindle`) uses neither.
@@ -41,7 +41,7 @@ make help           # how one lights Kindling
 make kindle         # OUR firmware + kernel. No Limine. No OVMF.
 make serial-uefi    # OVMF → our BOOTX64.EFI
 make serial         # Limine ISO (optional crutch)
-make audit          # 256/8/4/1G/none/wrong/lilac/q35
+make audit          # 256/8/4/1G/1025M/2G/none/wrong/lilac/q35
 make below          # full below gate (audit+trap+fmap+fw-trap+efi)
 ```
 
@@ -57,10 +57,10 @@ make below          # full below gate (audit+trap+fmap+fw-trap+efi)
 | `scripts/` | `audit-kindle.sh`, `below.sh`, `romsum.py` (IBM BIOS checksum) |
 | `docs/BOOT.md` | Limine vs UEFI vs our firmware, QEMU flags |
 | `docs/FIRMWARE.md` | ROM contract (RAM map, GDT, FMAP, traps) |
-| `docs/BELOW.md` | below gate + house (G15) + ring3 (G16) + reclaim (G17) + tale (G18) |
+| `docs/BELOW.md` | below gate + house (G15) + ring3 (G16) + reclaim (G17) + tale (G18) + stow (G19) + spawn (G20) |
 | `docs/HOUSECALLS.md` | Gleam-only house calls (`int 0xE0`, not Linux) |
 | `docs/CAIRN.md` | the cairn (leaves + sparks on disk, `glean`) |
-| `spark/` | Gleam sparks (`tale.asm` + `first-leaf.txt`, house voice) |
+| `spark/` | Gleam sparks (`tale.asm` + `wick.asm`, house voice) |
 | `docs/syscalls.md` | Linux ABI table (reference only — Gleam speaks house calls) |
 | `limine.conf` | optional Limine menu |
 
@@ -73,7 +73,7 @@ make below          # full below gate (audit+trap+fmap+fw-trap+efi)
 
 ## Phases
 
-0 serial hello → **1 memory (kindle well + cup-stack)** → 2 user ELF `write`/`exit` → 3 fork/exec → … suite as guest.
+0 serial hello → **1 memory (kindle well + cup-stack)** → house light (G15–G22) → `grant`/`flush` / Linux ELF → 3 fork/exec → … suite as guest.
 
 ## License
 

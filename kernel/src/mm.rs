@@ -3,7 +3,7 @@
 
 use core::arch::asm;
 
-use crate::start::serial_print;
+use crate::start::{serial_print, serial_u64};
 
 pub const PAGE: u64 = 0x1000;
 pub const BIG: u64 = 0x200000; // 2 MiB page
@@ -69,7 +69,6 @@ fn oom() -> ! {
 }
 
 /// Reload CR3 with itself: full TLB flush (gate scale, no invlpg bookkeeping).
-#[allow(dead_code)]
 fn tlb_flush() {
     unsafe {
         let v: u64;
@@ -96,6 +95,9 @@ static mut PD0: u64 = 0;
 /// True when the LAPIC window (PDPT[3]) was installed. The timer reads it.
 #[allow(dead_code)]
 static mut AP_MAPPED: bool = false;
+
+/// Kernel CR3 after the well. Spawn clones this map and strips U/S.
+static mut KERNEL_CR3: u64 = 0;
 
 /// Read by the timer (BIOS path) to decide virtual-wire vs honest stub.
 #[allow(dead_code)]
@@ -162,8 +164,9 @@ pub unsafe fn prepare_well(hint: Hint) -> Well {
 
     let mut virt = 0u64;
     let mut gb = 0usize;
-    // Realms shut (init first): every page U/S so CPL3 can fetch the shared
-    // image + stacks. Future realms clear US per-address-space.
+    // Shared map stays all-U/S so tale/init still fetch the image. Spawn
+    // clones these tables and strips US, leaving user bits only on the
+    // spark and its cup.
     while virt < ram_end && gb < 512 {
         let pd = bump.table();
         unsafe {
@@ -205,6 +208,9 @@ pub unsafe fn prepare_well(hint: Hint) -> Well {
     };
     let _ = ap_mapped;
     pool_init(align_up(bump.next, PAGE), ram_end);
+    unsafe {
+        core::ptr::addr_of_mut!(KERNEL_CR3).write(pml4 as u64);
+    }
     Well {
         top,
         ram_end,
@@ -230,13 +236,10 @@ pub fn cup_kib(stack: u64) -> u64 {
 
 // --- G1: realms. A realm owns guard + 16 cup pages + 1 PT page from the
 // pool and a split PD entry (2M → 512×4K) with the guard not-present.
-// No execution on realm cups yet — G1 proves reclaim mechanics on the live
-// map (split → verify → restore), execution waits on spawn (G4).
+// Reclaim proves the live-map split; spawn (G20) clones CR3 and runs.
 #[cfg(feature = "reclaim-test")]
 pub const REALM_PAGES: usize = 18; // guard + 16 cup + PT
 
-#[allow(dead_code)]
-#[cfg(any(feature = "reclaim-test", feature = "tale-test"))]
 pub(crate) fn page_alloc() -> u64 {
     unsafe {
         let n = core::ptr::addr_of_mut!(POOL_N);
@@ -245,6 +248,255 @@ pub(crate) fn page_alloc() -> u64 {
         }
         n.write(n.read() - 1);
         core::ptr::addr_of!(POOL).cast::<u64>().add(n.read()).read()
+    }
+}
+
+// --- G20: spawn map. Clone the kernel tables, strip U/S from kernel
+// leaves, split the 2M covering spark+cup+guard into 4K, and grant user
+// only those floorboards. APIC PDPT[3] is shared supervisor.
+
+const CUP_PAGES: u64 = 16;
+const GUARD_AND_CUP: usize = 17;
+
+pub struct SparkRealm {
+    pub cr3: u64,
+    pub spark: u64,
+    pub cup_top: u64,
+}
+
+fn spawn_fail(n: u64) -> ! {
+    serial_print("kindling: spawn FAIL ");
+    serial_u64(n);
+    serial_print("\n");
+    crate::start::hcf();
+}
+
+fn copy_page(src: u64) -> u64 {
+    let dst = page_alloc();
+    unsafe {
+        core::ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, PAGE as usize);
+    }
+    dst
+}
+
+fn clone_kernel_map() -> u64 {
+    let kcr3 = unsafe { core::ptr::addr_of!(KERNEL_CR3).read() };
+    if kcr3 == 0 {
+        spawn_fail(5);
+    }
+    let pml4 = copy_page(kcr3);
+    unsafe {
+        let src_pml4 = kcr3 as *const u64;
+        let dst_pml4 = pml4 as *mut u64;
+        for i in 0..512 {
+            let e = src_pml4.add(i).read_volatile();
+            if e & P == 0 {
+                dst_pml4.add(i).write_volatile(0);
+                continue;
+            }
+            let src_pdpt_pa = pte_phys(e);
+            let pdpt = copy_page(src_pdpt_pa);
+            // US on the walk so CPL3 can reach user leaves.
+            dst_pml4.add(i).write_volatile(pdpt | P | RW | US);
+            let src_pdpt = src_pdpt_pa as *const u64;
+            let dst_pdpt = pdpt as *mut u64;
+            for gb in 0..512 {
+                let pe = src_pdpt.add(gb).read_volatile();
+                if pe & P == 0 {
+                    dst_pdpt.add(gb).write_volatile(0);
+                    continue;
+                }
+                // APIC window and any supervisor PDPT: share, no US.
+                if gb >= 3 || pe & US == 0 {
+                    dst_pdpt.add(gb).write_volatile(pe & !US);
+                    continue;
+                }
+                if pe & PS != 0 {
+                    dst_pdpt.add(gb).write_volatile(pe & !US);
+                    continue;
+                }
+                let src_pd_pa = pte_phys(pe);
+                let pd = copy_page(src_pd_pa);
+                dst_pdpt.add(gb).write_volatile(pd | P | RW | US);
+                let src_pd = src_pd_pa as *const u64;
+                let dst_pd = pd as *mut u64;
+                for j in 0..512 {
+                    let le = src_pd.add(j).read_volatile();
+                    if le & P == 0 {
+                        dst_pd.add(j).write_volatile(0);
+                    } else if le & PS != 0 {
+                        dst_pd.add(j).write_volatile((le & !US) | P | RW | PS);
+                    } else {
+                        let pt = copy_page(pte_phys(le));
+                        dst_pd.add(j).write_volatile(pt | P | RW | US);
+                        let src_pt = pte_phys(le) as *const u64;
+                        let dst_pt = pt as *mut u64;
+                        for k in 0..512 {
+                            let te = src_pt.add(k).read_volatile();
+                            dst_pt
+                                .add(k)
+                                .write_volatile(if te & P != 0 { te & !US } else { 0 });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    pml4
+}
+
+fn leaf_entry(cr3: u64, va: u64) -> u64 {
+    unsafe {
+        let e0 = (cr3 as *const u64)
+            .add(((va >> 39) & 511) as usize)
+            .read_volatile();
+        if e0 & P == 0 {
+            return 0;
+        }
+        let e1 = (pte_phys(e0) as *const u64)
+            .add(((va >> 30) & 511) as usize)
+            .read_volatile();
+        if e1 & P == 0 {
+            return 0;
+        }
+        if e1 & PS != 0 {
+            return e1;
+        }
+        let e2 = (pte_phys(e1) as *const u64)
+            .add(((va >> 21) & 511) as usize)
+            .read_volatile();
+        if e2 & P == 0 {
+            return 0;
+        }
+        if e2 & PS != 0 {
+            return e2;
+        }
+        let e3 = (pte_phys(e2) as *const u64)
+            .add(((va >> 12) & 511) as usize)
+            .read_volatile();
+        if e3 & P == 0 {
+            return 0;
+        }
+        e3
+    }
+}
+
+unsafe fn pte4k(cr3: u64, va: u64) -> *mut u64 {
+    unsafe {
+        let e0 = (cr3 as *const u64)
+            .add(((va >> 39) & 511) as usize)
+            .read_volatile();
+        let e1 = (pte_phys(e0) as *const u64)
+            .add(((va >> 30) & 511) as usize)
+            .read_volatile();
+        if e0 & P == 0 || e1 & P == 0 || e1 & PS != 0 {
+            spawn_fail(6);
+        }
+        let pd = pte_phys(e1) as *mut u64;
+        let pdi = ((va >> 21) & 511) as usize;
+        let pde = pd.add(pdi).read_volatile();
+        let pt = if pde & P == 0 {
+            spawn_fail(6)
+        } else if pde & PS != 0 {
+            let pt = page_alloc();
+            let region = va & !(BIG - 1);
+            for i in 0..512 {
+                let addr = region + (i as u64) * PAGE;
+                (pt as *mut u64).add(i).write_volatile(addr | P | RW);
+            }
+            pd.add(pdi).write_volatile(pt | P | RW | US);
+            pt
+        } else {
+            pte_phys(pde)
+        };
+        (pt as *mut u64).add(((va >> 12) & 511) as usize)
+    }
+}
+
+unsafe fn grant_user(cr3: u64, va: u64) {
+    unsafe {
+        pte4k(cr3, va).write_volatile(va | P | RW | US);
+    }
+}
+
+unsafe fn unmap_page(cr3: u64, va: u64) {
+    unsafe {
+        pte4k(cr3, va).write_volatile(0);
+    }
+}
+
+/// Clone the kernel map, give `spark` and a 64 KiB cup U/S 4K leaves, shut
+/// a guard page, keep kernel 2M supervisor. Verifies before return.
+pub fn place_spark(spark: u64, spark_len: u64) -> SparkRealm {
+    if spark_len == 0 || spark & (PAGE - 1) != 0 {
+        spawn_fail(6);
+    }
+    let kcr3 = unsafe { core::ptr::addr_of!(KERNEL_CR3).read() };
+    if kcr3 == 0 {
+        spawn_fail(5);
+    }
+    let cr3 = clone_kernel_map();
+    if cr3 == kcr3 {
+        spawn_fail(5);
+    }
+    let np = spark_len.div_ceil(PAGE);
+    let mut slot = [0u64; GUARD_AND_CUP];
+    for i in 0..GUARD_AND_CUP {
+        slot[i] = page_alloc();
+        if i > 0 && slot[i] != slot[i - 1] + PAGE {
+            spawn_fail(11);
+        }
+    }
+    let guard = slot[0];
+    let cup_base = slot[1];
+    unsafe {
+        (cup_base as *mut u64).write_volatile(CANARY);
+        let mut p = 0u64;
+        while p < np {
+            grant_user(cr3, spark + p * PAGE);
+            p += 1;
+        }
+        let mut c = 0u64;
+        while c < CUP_PAGES {
+            grant_user(cr3, cup_base + c * PAGE);
+            c += 1;
+        }
+        unmap_page(cr3, guard);
+    }
+    let mut fail = 0u64;
+    let mut p = 0u64;
+    while p < np {
+        let e = leaf_entry(cr3, spark + p * PAGE);
+        if e & (P | US) != (P | US) || pte_phys(e) != spark + p * PAGE {
+            fail = 6;
+        }
+        p += 1;
+    }
+    let ke = leaf_entry(cr3, 0x200000);
+    if ke & (P | PS | US) != (P | PS) {
+        fail = 7;
+    }
+    let mut c = 0u64;
+    while c < CUP_PAGES {
+        let e = leaf_entry(cr3, cup_base + c * PAGE);
+        if e & (P | US) != (P | US) || pte_phys(e) != cup_base + c * PAGE {
+            fail = 8;
+        }
+        c += 1;
+    }
+    if leaf_entry(cr3, guard) & P != 0 {
+        fail = 9;
+    }
+    if !canary_ok(cup_base) {
+        fail = 10;
+    }
+    if fail != 0 {
+        spawn_fail(fail);
+    }
+    SparkRealm {
+        cr3,
+        spark,
+        cup_top: (cup_base + CUP_PAGES * PAGE) & !0xF,
     }
 }
 
@@ -392,12 +644,53 @@ pub fn reclaim_self_test() {
     serial_print("kindling: reclaim ok\n");
 }
 
-/// Walk 2 MiB steps with a write/read. Stop at CMOS cap or first lie.
+fn pte_phys(entry: u64) -> u64 {
+    entry & 0x000F_FFFF_FFFF_F000
+}
+
+/// Present in the live CR3 (firmware tables, pre-well). Never touches the VA.
+fn mapped(va: u64) -> bool {
+    let mut cr3: u64;
+    unsafe {
+        asm!(
+            "mov {}, cr3",
+            out(reg) cr3,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    let pml4 = pte_phys(cr3);
+    let e0 = unsafe { ((pml4 + 8 * ((va >> 39) & 511)) as *const u64).read_volatile() };
+    if e0 & 1 == 0 {
+        return false;
+    }
+    let e1 = unsafe { ((pte_phys(e0) + 8 * ((va >> 30) & 511)) as *const u64).read_volatile() };
+    if e1 & 1 == 0 {
+        return false;
+    }
+    if e1 & PS != 0 {
+        return true;
+    }
+    let e2 = unsafe { ((pte_phys(e1) + 8 * ((va >> 21) & 511)) as *const u64).read_volatile() };
+    if e2 & 1 == 0 {
+        return false;
+    }
+    if e2 & PS != 0 {
+        return true;
+    }
+    let e3 = unsafe { ((pte_phys(e2) + 8 * ((va >> 12) & 511)) as *const u64).read_volatile() };
+    e3 & 1 != 0
+}
+
+/// Walk 2 MiB steps with a write/read. Stop at CMOS cap, first not-present, or first lie.
+/// Walking unmapped RAM is a #PF — that is a fail, not a well size.
 fn probe_cap(cap: u64) -> u64 {
     let cap = cap.min(0x1_0000_0000);
     let mut last = 0x20_0000u64;
     let mut p = 0x40_0000u64;
     while p.saturating_add(8) <= cap {
+        if !mapped(p) {
+            break;
+        }
         let ptr = p as *mut u64;
         let token = 0x4B4E_444C_u64 ^ p;
         let old = unsafe { ptr.read_volatile() };
@@ -411,4 +704,56 @@ fn probe_cap(cap: u64) -> u64 {
         p = p.saturating_add(BIG);
     }
     last.min(cap)
+}
+
+/// Identity-map `phys..phys+len` as 2M uncacheable supervisor pages.
+/// GOP / MMIO lives outside the well; without this, `mov cr3` blinds the glass.
+/// Already-present RAM leaves are left alone. Empty PDPT slots get a fresh PD.
+pub fn map_uc(phys: u64, len: u64) {
+    if phys == 0 || len == 0 {
+        return;
+    }
+    let start = phys & !(BIG - 1);
+    let Some(sum) = phys.checked_add(len) else {
+        return;
+    };
+    let end = align_up(sum, BIG);
+    if end.saturating_sub(start) > 64 * 1024 * 1024 {
+        return;
+    }
+    let cr3 = unsafe { core::ptr::addr_of!(KERNEL_CR3).read() };
+    if cr3 == 0 {
+        return;
+    }
+    unsafe {
+        let pml4e = (cr3 as *const u64).read_volatile();
+        if pml4e & P == 0 {
+            return;
+        }
+        let pdpt = pte_phys(pml4e) as *mut u64;
+        let mut va = start;
+        while va < end {
+            let gb = ((va >> 30) & 511) as usize;
+            let pdi = ((va >> 21) & 511) as usize;
+            let pdpte = pdpt.add(gb).read_volatile();
+            let pd = if pdpte & P == 0 {
+                let pd = page_alloc();
+                core::ptr::write_bytes(pd as *mut u8, 0, PAGE as usize);
+                pdpt.add(gb).write_volatile(pd | P | RW);
+                pd
+            } else if pdpte & PS != 0 {
+                va += BIG;
+                continue;
+            } else {
+                pte_phys(pdpte)
+            };
+            let slot = (pd as *mut u64).add(pdi);
+            let e = slot.read_volatile();
+            if e & P == 0 {
+                slot.write_volatile(va | P | RW | PCD | PWT | PS);
+            }
+            va += BIG;
+        }
+    }
+    tlb_flush();
 }

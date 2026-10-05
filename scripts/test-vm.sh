@@ -2,7 +2,7 @@
 # test-vm — Kindling test VM: build (if asked), boot, judge the transcript.
 #
 # usage:
-#   test-vm happy|house|ring3|reclaim|tale   build + boot the known image
+#   test-vm happy|house|ring3|reclaim|tale|spawn   build + boot the known image
 #   test-vm <image> <want>...           boot any image; every want must appear
 #
 # Logs land in test-logs/<case>.log. Prints PASS/FAIL. Exit 0/1.
@@ -121,8 +121,18 @@ tale)
         --spark tale=spark/tale.bin --leaf first-leaf=spark/first-leaf.txt \
         --leaf slate=spark/slate.txt >/dev/null
     ;;
+spawn)
+    nasm -f bin -o spark/wick.bin spark/wick.asm
+    make -C kernel spawn-bin >/dev/null
+    python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+        --kernel kernel/kernel.spawn.bin --out kindling-spawn.img \
+        --spark wick=spark/wick.bin --leaf second-leaf=spark/second-leaf.txt >/dev/null
+    run_case spawn kindling-spawn.img \
+        "kindling: house ok" "kindling: spawn ok" \
+        "the cup is its own" "kindling: gleam exit 0"
+    ;;
 "")
-    echo "usage: test-vm happy|house|ring3|reclaim|tale|<image> <want>..." >&2
+    echo "usage: test-vm happy|house|ring3|reclaim|tale|spawn|<image> <want>..." >&2
     exit 2
     ;;
 *)

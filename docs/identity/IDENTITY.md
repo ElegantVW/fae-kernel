@@ -65,6 +65,12 @@ Source of truth: [logo.txt](logo.txt). 7×7, CP437-safe (`*`, `/`, `\`, `|`, spa
 
 Printed at reset, top-left, before any other glyph.
 
+After the well, Kindling paints the Grove clearing (`faeOS/assets/sigils/grove.txt`,
+Violet 5) under the flame, then the title `Grove` in Parchment. BIOS keeps the
+firmware flame and adds Grove on VGA. EFI prints Grove on ConOut first (iron has
+no COM1; GOP open may hang), then GOP draws flame + Grove when the open returns.
+Serial ceremony does not grow an egg for this.
+
 ---
 
 ## Do not

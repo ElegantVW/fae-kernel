@@ -6,6 +6,7 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 export PATH="${HOME}/.cargo/bin:$PATH"
+python3 scripts/mkfont.py
 nasm -f bin -o fw/cerne-fw.bin fw/cerne-fw.asm
 python3 scripts/romsum.py fw/cerne-fw.bin
 nasm -f bin -o ld/cerne-ld.bin ld/cerne-ld.asm
@@ -48,6 +49,12 @@ run 4M "the well ran dry" \
   -display none -serial stdio -no-reboot -no-shutdown
 run 1G "well 1024 MiB" \
   "$QEMU" -M pc -m 1G -bios "$FW" $DISK \
+  -display none -serial stdio -no-reboot -no-shutdown
+run 1025M "well 1024 MiB" \
+  "$QEMU" -M pc -m 1025M -bios "$FW" $DISK \
+  -display none -serial stdio -no-reboot -no-shutdown
+run 2G "well 2048 MiB" \
+  "$QEMU" -M pc -m 2G -bios "$FW" $DISK \
   -display none -serial stdio -no-reboot -no-shutdown
 run none "no guest at 0x200000" \
   "$QEMU" -M pc -m 256M -bios "$FW" \

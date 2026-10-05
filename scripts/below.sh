@@ -10,6 +10,12 @@ QEMU="${QEMU:-qemu-system-x86_64}"
 
 sh scripts/audit-kindle.sh
 
+echo "---- font ----"
+python3 scripts/check-font.py
+
+echo "---- grove ----"
+python3 scripts/check-grove.py
+
 echo "---- trap6 ----"
 make -C kernel trap6-bin
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
@@ -155,7 +161,38 @@ make steel >/dev/null
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
   --kernel kernel/kernel.fw.bin --out kindling.img
 
+echo "---- spawn ----"
+nasm -f bin -o spark/wick.bin spark/wick.asm
+make -C kernel spawn-bin
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.spawn.bin --out kindling-spawn.img \
+  --spark wick=spark/wick.bin --leaf second-leaf=spark/second-leaf.txt
+got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
+  -bios "$FW" -drive if=ide,format=raw,file=kindling-spawn.img \
+  -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
+printf '%s\n' "$got" | grep -F -q "kindling: spawn ok" || {
+  echo "FAIL spawn"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "the cup is its own" || {
+  echo "FAIL spawn (no second-leaf)"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "kindling: gleam exit 0" || {
+  echo "FAIL spawn (no gleam exit 0)"
+  echo "$got" | tail -12
+  exit 1
+}
+echo "ok   spawn"
+# restore the paved kernel for later steps
+make steel >/dev/null
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling.img
+
 echo "---- fmap-bad ----"
+python3 scripts/mkfont.py
 nasm -f bin -DAUDIT_BAD_FMAP -o "$FW" fw/cerne-fw.asm
 python3 scripts/romsum.py "$FW"
 got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
@@ -223,6 +260,21 @@ printf '%s\n' "$got" | grep -F -q "efi map" || {
 }
 printf '%s\n' "$got" | grep -F -q "well" || {
   echo "FAIL efi well"
+  echo "$got" | tail -16
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "Grove" || {
+  echo "FAIL efi grove"
+  echo "$got" | tail -16
+  exit 1
+}
+printf '%s\n' "$got" | grep -Fx -q "image" || {
+  echo "FAIL efi image"
+  echo "$got" | tail -16
+  exit 1
+}
+printf '%s\n' "$got" | grep -Fx -q "exit" || {
+  echo "FAIL efi exit"
   echo "$got" | tail -16
   exit 1
 }
