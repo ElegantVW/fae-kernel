@@ -167,6 +167,14 @@ unsafe extern "C" fn after_cup() -> ! {
     // reads it. Unconditional — harmless on images that never sleep.
     crate::timer::wire();
     crate::glass::map_and_show();
+    {
+        let msg = b"kindling\n";
+        crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
+        if !crate::kbd::live() {
+            let msg = b"no kbd\n";
+            crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
+        }
+    }
     #[cfg(feature = "house-test")]
     crate::house::self_test();
     #[cfg(feature = "reclaim-test")]

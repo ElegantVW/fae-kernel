@@ -15,6 +15,8 @@ const LILAC: u32 = 0x00D4_B4E8;
 const VIOLET: u32 = 0x00B0_8CC8;
 const PARCHMENT: u32 = 0x00F0_E4EE;
 const NIGHT: u32 = 0x001A_1218;
+/// GOP log and Grove share this left margin so ingle sits under the title.
+const GOP_X: u64 = 8;
 
 /// Kindling flame — `docs/identity/logo.txt` (firmware already laid this on VGA).
 const FLAME: &str = "  *\n /|\\\n/ | \\\n  |\n / \\\n/   \\\n";
@@ -119,16 +121,17 @@ fn show_gop() {
     // Glyphs only — a full UC fill of 1080p looks hung on iron. blit_char
     // already lays Night behind each cell.
     let mut y = 8u64;
-    y = put_gop_art(8, y, FLAME, LILAC);
+    y = put_gop_art(GOP_X, y, FLAME, LILAC);
     y += 16;
-    y = put_gop_art(8, y, GROVE, VIOLET);
+    y = put_gop_art(GOP_X, y, GROVE, VIOLET);
     y += 16;
-    put_gop_row(8, y, TITLE.as_bytes(), PARCHMENT);
+    put_gop_row(GOP_X, y, TITLE.as_bytes(), PARCHMENT);
     let row = ((y + 32) / 16) as u16;
     unsafe {
         core::ptr::addr_of_mut!(CUR_R).write(row.max(16));
         core::ptr::addr_of_mut!(CUR_C).write(0);
     }
+    draw_cursor(unsafe { core::ptr::addr_of!(CUR_R).read() }, 0);
 }
 
 fn put_vga_art(mut row: u16, art: &str, attr: u8) {
@@ -255,6 +258,34 @@ pub fn put_bytes(buf: *const u8, len: u64) {
     }
 }
 
+fn gop_x(c: u16) -> u64 {
+    GOP_X + c as u64 * 8
+}
+
+fn gop_y(r: u16) -> u64 {
+    r as u64 * 16
+}
+
+fn draw_cursor(r: u16, c: u16) {
+    let fb = unsafe { core::ptr::addr_of!(FB).read() };
+    if fb.addr == 0 {
+        return;
+    }
+    let pix = pack(PARCHMENT, fb.bgr);
+    let x = gop_x(c);
+    let y = gop_y(r) + 14;
+    let mut col = 0u64;
+    while col < 8 {
+        poke(fb, x + col, y, pix);
+        poke(fb, x + col, y + 1, pix);
+        col += 1;
+    }
+}
+
+fn erase_cursor(r: u16, c: u16) {
+    blit_char(gop_x(c), gop_y(r), b' ', LILAC);
+}
+
 fn putc(b: u8, vga: bool) {
     let mut r = unsafe { core::ptr::addr_of!(CUR_R).read() };
     let mut c = unsafe { core::ptr::addr_of!(CUR_C).read() };
@@ -268,8 +299,11 @@ fn putc(b: u8, vga: bool) {
         COLS
     } else {
         let w = unsafe { core::ptr::addr_of!(FB).read().width };
-        (w / 8).min(80) as u16
+        ((w.saturating_sub(GOP_X)) / 8).min(80) as u16
     };
+    if !vga {
+        erase_cursor(r, c);
+    }
     if b == b'\n' {
         r = r.saturating_add(1);
         c = 0;
@@ -279,7 +313,7 @@ fn putc(b: u8, vga: bool) {
         if vga {
             vga_cell(r, c, b, ATTR_LILAC);
         } else {
-            blit_char(c as u64 * 8, r as u64 * 16, b, LILAC);
+            blit_char(gop_x(c), gop_y(r), b, LILAC);
         }
         c = c.saturating_add(1);
         if c >= max_c {
@@ -296,5 +330,8 @@ fn putc(b: u8, vga: bool) {
     unsafe {
         core::ptr::addr_of_mut!(CUR_R).write(r);
         core::ptr::addr_of_mut!(CUR_C).write(c);
+    }
+    if !vga {
+        draw_cursor(r, c);
     }
 }

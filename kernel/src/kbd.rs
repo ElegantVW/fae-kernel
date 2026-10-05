@@ -198,25 +198,48 @@ fn ascii(sc: u8) -> u8 {
     }
 }
 
-/// IRQ1. Drain one byte, EOI master.
-#[unsafe(no_mangle)]
-pub extern "sysv64" fn kbd_tick() {
+fn take_scancode(sc: u8) {
     unsafe {
-        if inb(STAT) & 1 != 0 {
+        if core::ptr::addr_of!(EXT).read() {
+            core::ptr::addr_of_mut!(EXT).write(false);
+        } else if sc == 0xE0 {
+            core::ptr::addr_of_mut!(EXT).write(true);
+        } else if sc & 0x80 == 0 {
+            push(ascii(sc));
+        }
+    }
+}
+
+/// Pull bytes off the 8042. IRQ1 may be dead after ExitBootServices;
+/// the data port can still speak.
+fn drain_port() {
+    unsafe {
+        let mut n = 0u32;
+        while inb(STAT) & 1 != 0 {
             let sc = inb(DATA);
-            if core::ptr::addr_of!(EXT).read() {
-                core::ptr::addr_of_mut!(EXT).write(false);
-            } else if sc == 0xE0 {
-                core::ptr::addr_of_mut!(EXT).write(true);
-            } else if sc & 0x80 == 0 {
-                push(ascii(sc));
+            if core::ptr::addr_of!(LIVE).read() {
+                take_scancode(sc);
+            }
+            n = n.saturating_add(1);
+            if n >= 16 {
+                break;
             }
         }
+    }
+}
+
+/// IRQ1. Drain, EOI master.
+#[unsafe(no_mangle)]
+pub extern "sysv64" fn kbd_tick() {
+    drain_port();
+    unsafe {
         outb(0x20, 0x20);
     }
 }
 
 /// House `read` fd 0. Blocks until a byte when the 8042 is live.
+/// Polls the data port: EFI has no PIT, and iron IRQ1 often dies after
+/// ExitBootServices, so `hlt` alone never wakes.
 pub fn read(buf: *mut u8, len: u64) -> u64 {
     if buf.is_null() || len == 0 || len > (1 << 20) {
         return err(EPERM);
@@ -224,6 +247,7 @@ pub fn read(buf: *mut u8, len: u64) -> u64 {
     if !unsafe { core::ptr::addr_of!(LIVE).read() } {
         return err(EAGAIN);
     }
+    drain_port();
     let n = drain(buf, len);
     if n > 0 {
         return n;
@@ -232,6 +256,7 @@ pub fn read(buf: *mut u8, len: u64) -> u64 {
         asm!("sti", options(nomem, nostack, preserves_flags));
     }
     loop {
+        drain_port();
         if let Some(b) = pop() {
             unsafe {
                 buf.write_volatile(b);
@@ -239,8 +264,12 @@ pub fn read(buf: *mut u8, len: u64) -> u64 {
             let rest = drain(unsafe { buf.add(1) }, len.saturating_sub(1));
             return 1 + rest;
         }
-        unsafe {
-            asm!("hlt", options(nomem, nostack, preserves_flags));
+        if crate::timer::pit_armed() {
+            unsafe {
+                asm!("hlt", options(nomem, nostack, preserves_flags));
+            }
+        } else {
+            core::hint::spin_loop();
         }
     }
 }
@@ -259,7 +288,6 @@ fn drain(buf: *mut u8, len: u64) -> u64 {
     i
 }
 
-#[allow(dead_code)]
 pub fn live() -> bool {
     unsafe { core::ptr::addr_of!(LIVE).read() }
 }

@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## ingle-wait-g25c (2026-10-05)
+
+- Iron showed a quiet cursor under Grove: cairn planted and ingle wrote, then `read` `hlt`'d. EFI never programs the PIT, and laptop IRQ1 often dies after ExitBootServices, so that `hlt` never wakes. `read` now polls the 8042 data port and `pause`s unless the PIT is armed. GOP log sits at Grove's margin with a parchment bar cursor. After the well the glass says `kindling`, and `no kbd` if the 8042 probe refused.
+
 ## efi-cairn-g25b (2026-10-05)
 
 - Iron (IdeaPad Insyde) showed Grove twice and nothing else: GOP covers ConOut breadcrumbs, and the cairn never planted. LoadedImage.device() often has no SimpleFileSystem (USB child does). Walk: GetProtocol on the device, LocateDevicePath on that path, LocateDevicePath on LoadedImageDevicePath (the HD node lives on the file path), then every SimpleFileSystem handle until `CAIRN` opens. Nested `EFI/BOOT/CAIRN` open. AllocateAddress 1MB may refuse 512 KiB; shrink to 64/16/4 KiB, else AnyPages + copy after EBS when the slot is free and not the running image. Miss writes `no ingle` on the glass (no COM1). `make below` EFI (no CAIRN) greps that line.

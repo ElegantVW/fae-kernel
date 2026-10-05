@@ -12,6 +12,7 @@ use core::arch::asm;
 
 static mut TICKS: u64 = 0;
 static mut ACTIVE: bool = false;
+static mut PIT: bool = false;
 
 /// Readback of virtual-wire programming, for the self-test (never silent).
 #[allow(dead_code)]
@@ -59,9 +60,16 @@ pub fn init() {
         outb(0x40, (div & 0xFF) as u8);
         outb(0x40, (div >> 8) as u8);
         core::ptr::addr_of_mut!(TICKS).write_volatile(0);
+        core::ptr::addr_of_mut!(PIT).write(true);
         let m = inb(0x21) & !0x01;
         outb(0x21, m);
     }
+}
+
+/// PIT programmed and IRQ0 unmasked. EFI skips [`init`], so `hlt` in
+/// `read` would never wake — poll + `pause` there instead.
+pub fn pit_armed() -> bool {
+    unsafe { core::ptr::addr_of!(PIT).read() }
 }
 
 /// Virtual-wire + ACTIVE. Call post-well (after_cup): enable the LAPIC,

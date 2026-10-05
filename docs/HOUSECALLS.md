@@ -28,7 +28,7 @@ Swift, purposeful, direct — no noise. Unknown refuses, never silently succeeds
 | 7 | `flush` | — | `-EAGAIN` | shut (needs Lantern framebuffer) |
 | 8 | `glean` | `rdi` = name, `rsi` = buf, `rdx` = len | bytes or `-errno` | done (cairn leaves; missing → `-ENOENT`, bad args → `-EPERM`, no cairn → `-ENODEV`, bad xor → `-EIO`) |
 | 9 | `stow` | `rdi` = name, `rsi` = buf, `rdx` = len (= `datalen`) | bytes or `-errno` | done (re-ink same measure; sectors + LBA0 rewritten and re-read; `-EIO` on mismatch) |
-| 10 | `read` | `rdi` = fd, `rsi` = buf, `rdx` = len | bytes or `-errno` | done on fd 0 (PS/2 ASCII); other fd → `-EPERM`; no 8042 → `-EAGAIN`; blocks until a byte when live |
+| 10 | `read` | `rdi` = fd, `rsi` = buf, `rdx` = len | bytes or `-errno` | done on fd 0 (PS/2 ASCII); other fd → `-EPERM`; no 8042 → `-EAGAIN`; blocks until a byte when live. Polls the data port; `hlt` only when the PIT is armed (EFI has no IRQ0, iron IRQ1 often dies after ExitBootServices) |
 
 Anything else → `-ENOSYS`.
 

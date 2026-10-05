@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → loader (off the disk) → Kindling spark. House light (G15–G25b) is on.
+Firmware → loader (off the disk) → Kindling spark. House light (G15–G25c) is on.
 Linux ELF waits on its own gate. This file staying green is still the law.
 
 Run: `make below`  
@@ -36,9 +36,10 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G24 | Ingle — greeter spark waits for a line, says the fire is lit | ingle in `make below` / `make test` | yes |
 | G25 | Paved ingle — BIOS `make image` packs the spark; EFI plants `EFI/BOOT/CAIRN` | efi-ingle in `make below` | yes |
 | G25b | Iron cairn — walk USB child FS + LoadedImageDevicePath; glass `no ingle` on miss | efi greps `no ingle`; efi-ingle still greets | yes |
+| G25c | Iron ingle wait — poll 8042; `hlt` only with PIT; glass cursor + `kindling` | efi-ingle sendkey still greets | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 
 House calls (Gleam-only, not Linux): `docs/HOUSECALLS.md`. First set: `yield` / `exit` / `write(fd 1-2)` / `read(fd 0)` / `sleep` / `time` / `glean` / `stow` / `spawn` + shut `grant` / `flush` (`-EAGAIN`). `write` also paints the glass (VGA / GOP). Happy serial unchanged; `house-test` image prints `kindling: house ok`; `spawn-test` prints `kindling: spawn ok` then the second-leaf. After the well the glass shows the Grove glyph + title. EFI prints Grove on ConOut before touching GOP (IdeaPad has no COM1; Insyde hung inside GOP open).
 
-Out of gate: storage beyond boot reads (writes, filesystems), SMP APs, LA57 well, trap recover, USB HID (PS/2 probe stays). Iron 8042 on the IdeaPad is a stick verdict, not this gate.
+Out of gate: storage beyond boot reads (writes, filesystems), SMP APs, LA57 well, trap recover, USB HID (PS/2 poll is in-gate; HID waits).
