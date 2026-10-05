@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Boot ingle, send Enter, prove the greeter spoke."""
+"""Boot EFI ingle (OVMF + CAIRN on the ESP), send Enter, prove the greeter spoke."""
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -11,10 +12,32 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 QEMU = os.environ.get("QEMU", "qemu-system-x86_64")
-FW = ROOT / "fw" / "cerne-fw.bin"
-IMG = Path(os.environ.get("INGLE_IMG", ROOT / "kindling-ingle.img"))
-MON = f"/tmp/kindling-ingle-{os.getpid()}.mon"
-SER = f"/tmp/kindling-ingle-{os.getpid()}.ser"
+ESP = ROOT / "esp"
+EFI = ESP / "EFI" / "BOOT" / "BOOTX64.EFI"
+CAIRN = ESP / "EFI" / "BOOT" / "CAIRN"
+MON = f"/tmp/kindling-efi-ingle-{os.getpid()}.mon"
+SER = f"/tmp/kindling-efi-ingle-{os.getpid()}.ser"
+VARS = f"/tmp/kindling-efi-ingle-{os.getpid()}.vars"
+
+OVMF_CODE = [
+    Path("/usr/share/edk2/x64/OVMF_CODE.4m.fd"),
+    Path("/usr/share/edk2/x64/OVMF_CODE.fd"),
+    Path("/usr/share/edk2-ovmf/x64/OVMF_CODE.fd"),
+    Path("/usr/share/OVMF/OVMF_CODE.fd"),
+]
+OVMF_VARS = [
+    Path("/usr/share/edk2/x64/OVMF_VARS.4m.fd"),
+    Path("/usr/share/edk2/x64/OVMF_VARS.fd"),
+    Path("/usr/share/edk2-ovmf/x64/OVMF_VARS.fd"),
+    Path("/usr/share/OVMF/OVMF_VARS.fd"),
+]
+
+
+def first_file(cands: list[Path]) -> Path | None:
+    for p in cands:
+        if p.is_file():
+            return p
+    return None
 
 
 def read_until(sock: socket.socket, mark: str, timeout: float) -> str:
@@ -48,71 +71,81 @@ def serial_has(mark: str, timeout: float) -> str:
 
 
 def main() -> int:
-    for p in (MON, SER):
+    for p in (MON, SER, VARS):
         try:
             os.unlink(p)
         except FileNotFoundError:
             pass
-    if not FW.is_file() or not IMG.is_file():
-        print("FAIL ingle (missing fw or image)", file=sys.stderr)
+    code = first_file(OVMF_CODE)
+    vars_src = first_file(OVMF_VARS)
+    if code is None or vars_src is None:
+        print("FAIL efi-ingle (no OVMF)", file=sys.stderr)
         return 1
+    if not EFI.is_file() or not CAIRN.is_file():
+        print("FAIL efi-ingle (missing BOOTX64.EFI or CAIRN)", file=sys.stderr)
+        return 1
+    shutil.copyfile(vars_src, VARS)
     proc = subprocess.Popen(
         [
             QEMU,
             "-M",
-            "pc",
+            "q35",
             "-m",
             "256M",
-            "-bios",
-            str(FW),
-            "-drive",
-            f"if=ide,format=raw,file={IMG}",
             "-display",
             "none",
             "-serial",
             f"file:{SER}",
             "-no-reboot",
             "-no-shutdown",
+            "-drive",
+            f"if=pflash,format=raw,unit=0,readonly=on,file={code}",
+            "-drive",
+            f"if=pflash,format=raw,unit=1,file={VARS}",
+            "-drive",
+            "format=raw,file=fat:rw:esp",
             "-monitor",
             f"unix:{MON},server,nowait",
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        cwd=ROOT,
     )
     try:
-        serial = serial_has("kindling: ingle ok\ningle\n", 6)
-        if "kindling: ingle ok\ningle\n" not in serial.replace("\r", ""):
-            print("FAIL ingle (spark never wrote its name)")
-            print(serial[-400:])
+        serial = serial_has("kindling: ingle ok\ningle\n", 14)
+        t = serial.replace("\r", "")
+        if "kindling: ingle ok\ningle\n" not in t:
+            print("FAIL efi-ingle (spark never wrote its name)")
+            print(serial[-600:])
             return 1
         deadline = time.time() + 2
         while time.time() < deadline and not Path(MON).exists():
             time.sleep(0.05)
         if not Path(MON).exists():
-            print("FAIL ingle (no monitor socket)")
+            print("FAIL efi-ingle (no monitor socket)")
             return 1
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(2)
         sock.connect(MON)
         banner = read_until(sock, "(qemu)", 2)
         if "(qemu)" not in banner:
-            print("FAIL ingle (no monitor prompt)")
+            print("FAIL efi-ingle (no monitor prompt)")
             print(banner)
             return 1
         sock.sendall(b"sendkey ret\n")
         read_until(sock, "(qemu)", 2)
         sock.close()
-        serial = serial_has("the fire is lit", 4)
+        serial = serial_has("the fire is lit", 6)
         t = serial.replace("\r", "")
         if "the fire is lit" not in t:
-            print("FAIL ingle (no greeting)")
-            print(serial[-400:])
+            print("FAIL efi-ingle (no greeting)")
+            print(serial[-600:])
             return 1
         if "kindling: gleam exit 0" not in t:
-            print("FAIL ingle (no gleam exit 0)")
-            print(serial[-400:])
+            print("FAIL efi-ingle (no gleam exit 0)")
+            print(serial[-600:])
             return 1
-        print("ok   ingle")
+        print("ok   efi-ingle")
         return 0
     finally:
         proc.kill()
@@ -120,7 +153,7 @@ def main() -> int:
             proc.wait(timeout=2)
         except subprocess.TimeoutExpired:
             proc.send_signal(9)
-        for p in (MON, SER):
+        for p in (MON, SER, VARS):
             try:
                 os.unlink(p)
             except FileNotFoundError:

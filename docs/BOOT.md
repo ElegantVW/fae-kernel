@@ -28,7 +28,10 @@ chain earns every byte:
    reads the KMAP (LBA 0), loads the kernel straight to `0x200000`, checks
    its XOR and `'KNDL'`, jumps `0x200004`.
 
-Disk: `LBA 0` KMAP · `LBA 1..32` loader (16KiB slot) · `LBA 33..` kernel.
+Disk: `LBA 0` KMAP · `LBA 1..32` loader (16KiB slot) · `LBA 33..` kernel ·
+cairn (ingle, when packed). `make image` lays `--spark ingle` and writes
+`spark/cairn.bin`. After the well, the happy kernel lights `ingle` when the
+cairn has it; missing cairn is a quiet halt.
 Contracts in `docs/FIRMWARE.md`. RAM size is CMOS (this ROM *is* the BIOS —
 there is no `int 0x15`). First glyph is Lilac (VGA 13 + serial `ESC[95m`).
 `make hearth-see` opens a window.
@@ -56,13 +59,20 @@ cerne-efi
 /  |  \
 Grove
 image
+cairn
 gop
 exit
 fae-kernel
 kindling: still only a spark
 ```
 
-ConOut (the laptop panel) carries `cerne-efi`, the Grove sigil, `image` / `gop` / `exit`. COM1 carries `fae-kernel` and the well line. OVMF mirrors ConOut onto QEMU serial; IdeaPad does not.
+`make serial-uefi` copies `EFI/BOOT/CAIRN` next to `BOOTX64.EFI`. A missing
+cairn skips the `cairn` line; Grove still paints. After the well, `ingle`
+runs when the cairn planted.
+
+ConOut (the laptop panel) carries `cerne-efi`, the Grove sigil, `image` /
+`cairn` / `gop` / `exit`. COM1 carries `fae-kernel` and the well line. OVMF
+mirrors ConOut onto QEMU serial; IdeaPad does not.
 
 ## Limine ISO (`make serial`)
 

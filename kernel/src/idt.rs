@@ -262,7 +262,7 @@ fn gate_ist(off: u64, ist: u8) -> IdtEntry {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn trap_named(n: u64) -> ! {
+extern "sysv64" fn trap_named(n: u64) -> ! {
     serial_print("kindling: trap ");
     serial_u64(n);
     serial_print("\n");

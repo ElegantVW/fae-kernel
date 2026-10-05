@@ -1,8 +1,8 @@
 //! Cairn — leaves + sparks at 0x100000, laid by the loader (docs/CAIRN.md).
 //! The kernel re-verifies everything: KMAP scratch magic, cairn checksum,
 //! header, walk bounds, per-leaf xor. Absent or corrupt is refusal, never
-//! partial bytes. v0 rides the paved path only — EFI/Limine hands have no
-//! cairn and `glean` there refuses `-ENODEV`, loudly.
+//! partial bytes. BIOS loader lays the slot; EFI plants `EFI/BOOT/CAIRN`
+//! the same way. Absent is `-ENODEV`.
 
 use crate::start::{hcf, serial_print, serial_u64};
 
@@ -42,6 +42,39 @@ struct Cairn {
 static mut SEALED_BASE: u64 = 0;
 static mut SEALED_LEN: u64 = 0;
 static mut SEALED: bool = false;
+
+/// Plant a cairn already sitting at [`CAIRN_RAM`]. EFI copies `EFI/BOOT/CAIRN`
+/// there before ExitBootServices, then calls this so `open` sees a KMAP.
+#[allow(dead_code)]
+pub fn offer(len: u64) {
+    if len == 0 || len % 512 != 0 {
+        return;
+    }
+    let csec = (len / 512) as u32;
+    if csec == 0 || csec > MAX_SECTORS {
+        return;
+    }
+    let mut x = 0u32;
+    let mut off = 0u64;
+    unsafe {
+        while off < len {
+            x ^= ((CAIRN_RAM + off) as *const u32).read_volatile();
+            off += 4;
+        }
+        let clba = 1u32;
+        let csum = clba ^ csec ^ x ^ CAIR_MAGIC;
+        let k = KMAP_RAM as *mut u32;
+        k.write_volatile(KMAP_MAGIC);
+        k.add(1).write_volatile(0);
+        k.add(2).write_volatile(0);
+        k.add(3).write_volatile(0);
+        k.add(4).write_volatile(0);
+        k.add(5).write_volatile(clba);
+        k.add(6).write_volatile(csec);
+        k.add(7).write_volatile(csum);
+        core::ptr::addr_of_mut!(SEALED).write(false);
+    }
+}
 
 /// Locate + verify the cairn via the KMAP scratch the loader left at 0x8400.
 fn open() -> Option<Cairn> {
@@ -431,6 +464,25 @@ pub fn run_ingle(cup_top: u64) -> ! {
     let realm = crate::mm::place_spark(dst, len);
     serial_print("kindling: ingle ok\n");
     crate::house::enter_user_in(realm.spark, realm.cup_top, realm.cr3);
+}
+
+/// Paved path: light `ingle` when the cairn has it. Missing cairn or spark
+/// is a quiet halt — never a FAIL line on the happy kernel.
+#[allow(dead_code)]
+pub fn light_ingle(cup_top: u64) -> ! {
+    crate::gdt::set_kernel_stack(cup_top);
+    if let Some(c) = open() {
+        if let Ok((src, len)) = find(&c, b"ingle", 1) {
+            if len > 0 && len <= 65536 {
+                if let Some(dst) = copy_out(src, len) {
+                    let realm = crate::mm::place_spark(dst, len);
+                    serial_print("kindling: ingle ok\n");
+                    crate::house::enter_user_in(realm.spark, realm.cup_top, realm.cr3);
+                }
+            }
+        }
+    }
+    hcf();
 }
 
 /// Loose the `tale` spark: verify, copy it out of the cairn onto private

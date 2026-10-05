@@ -18,6 +18,7 @@ then lays the cairn at 0x100000 the same way.
   --leaf name=path    lay a leaf (data) in the cairn (repeatable, name <=64,
                       no '/' - flat grove, house voice)
   --spark name=path   lay a spark (CPL3 flat binary, entry at offset 0)
+  --cairn-out path    also write the cairn blob (ESP / EFI/BOOT/CAIRN)
 """
 import argparse
 import struct
@@ -93,6 +94,8 @@ def main() -> int:
                     help="lay a leaf: name=path (repeatable)")
     ap.add_argument("--spark", action="append", default=[],
                     help="lay a spark: name=path (repeatable)")
+    ap.add_argument("--cairn-out", default=None,
+                    help="write the cairn blob (needs --leaf/--spark)")
     args = ap.parse_args()
 
     try:
@@ -154,6 +157,16 @@ def main() -> int:
 
     with open(args.out, "wb") as fh:
         fh.write(image)
+
+    if args.cairn_out:
+        if not cairn:
+            sys.exit("mkimg: --cairn-out needs --leaf or --spark")
+        try:
+            with open(args.cairn_out, "wb") as fh:
+                fh.write(cairn)
+        except OSError as exc:
+            sys.exit(f"mkimg: {exc}")
+        print(f"mkimg: {args.cairn_out} ({cairn_sectors} sectors)")
 
     note = "bad checksum" if args.bad else ("wrong lba" if args.wrong else "kmap ok")
     if cairn:

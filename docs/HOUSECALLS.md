@@ -58,5 +58,6 @@ from ring 0 — direct `dispatch()` + real `int 0xE0` — and prints
 private CR3: `kindling: spawn ok`, the second-leaf, `gleam exit 0`.
 Feature `ingle-test` looses `ingle`: `kindling: ingle ok`, the spark writes
 `ingle`, `read` waits, Enter yields `the fire is lit` then `gleam exit 0`.
-Happy path (no feature) prints nothing new;
-the paved serial stays `cerne-fw / cerne-ld / fae-kernel / still only a spark / well …`.
+Happy path (no `*-test` feature) lights `ingle` when the cairn has it
+(`kindling: ingle ok`, then the spark). Missing cairn is a quiet halt.
+The paved serial still prints `cerne-fw / cerne-ld / fae-kernel / still only a spark / well …` first.

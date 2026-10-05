@@ -105,11 +105,11 @@ pub fn start(hint: Option<Hint>) -> ! {
     serial_init();
     serial_print("fae-kernel\n");
     serial_print("kindling: still only a spark\n");
-    crate::cpu::mask_pic();
+    crate::cpu::init_pic();
     if matches!(&hint, Some(h) if !h.trust_map) {
         crate::glass::offer_vga();
-        crate::gdt::install();
     }
+    crate::gdt::install();
     crate::idt::install();
     if matches!(&hint, Some(h) if !h.trust_map) {
         crate::timer::init();
@@ -199,7 +199,7 @@ unsafe extern "C" fn after_cup() -> ! {
         feature = "spawn-test",
         feature = "ingle-test"
     )))]
-    hcf();
+    crate::cairn::light_ingle(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
 }
 
 pub fn hcf() -> ! {

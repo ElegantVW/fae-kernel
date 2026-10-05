@@ -292,4 +292,15 @@ printf '%s\n' "$got" | grep -Fx -q "exit" || {
 }
 echo "ok   efi"
 
+echo "---- efi-ingle ----"
+nasm -f bin -o spark/ingle.bin spark/ingle.asm
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling.img \
+  --spark ingle=spark/ingle.bin --cairn-out spark/cairn.bin
+rm -rf esp
+mkdir -p esp/EFI/BOOT
+cp -f kernel/BOOTX64.EFI esp/EFI/BOOT/
+cp -f spark/cairn.bin esp/EFI/BOOT/CAIRN
+python3 scripts/check-efi-ingle.py
+
 echo "kindling: below ok"

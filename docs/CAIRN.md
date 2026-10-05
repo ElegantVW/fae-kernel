@@ -65,8 +65,13 @@ The kernel verifies magic + walk + per-leaf xor on every read. A bad xor is
 cause line, house line, `hlt`. Never half a jump. The kernel re-verifies;
 the loader only carries.
 
-v0 rides the paved path only (BIOS → loader → kernel). EFI/Limine hands have
-no cairn — `glean` there refuses `-ENODEV`, loudly documented, not silent.
+The BIOS loader lays the cairn from disk when packed. EFI plants the same
+bytes from `\EFI\BOOT\CAIRN` (GetProtocol SimpleFileSystem on the loaded
+image's device, AllocateAddress `0x100000`, then KMAP scratch at `0x8400`
+after ExitBootServices). `scripts/mkimg.py --cairn-out` writes that blob.
+A missing file or a failed alloc is honest — Grove still paints, `glean` /
+`spawn` / `light_ingle` refuse with `-ENODEV` or a quiet halt. Limine still
+has no cairn.
 
 ## Laying down (stow, G2b)
 
@@ -106,3 +111,4 @@ is the design working.
 - **first-leaf** — the first leaf, packed at cast time.
 - **wick** — the second spark: tells `second-leaf` from its own cup, then exits.
 - **second-leaf** — `the cup is its own`.
+- **ingle** — the greeter spark: writes its name, reads a line, says the fire is lit. Packed on `make image`; EFI copies it from `EFI/BOOT/CAIRN`.

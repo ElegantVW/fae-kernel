@@ -94,7 +94,7 @@ pub fn wire() {
 
 /// IRQ0 path. Keep tiny: count, EOI master, return.
 #[unsafe(no_mangle)]
-pub extern "C" fn timer_tick() {
+pub extern "sysv64" fn timer_tick() {
     unsafe {
         let t = core::ptr::addr_of_mut!(TICKS);
         // Volatile both ways: this races the hlt-loop reader in sleep_ms.

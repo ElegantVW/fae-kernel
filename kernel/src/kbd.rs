@@ -200,7 +200,7 @@ fn ascii(sc: u8) -> u8 {
 
 /// IRQ1. Drain one byte, EOI master.
 #[unsafe(no_mangle)]
-pub extern "C" fn kbd_tick() {
+pub extern "sysv64" fn kbd_tick() {
     unsafe {
         if inb(STAT) & 1 != 0 {
             let sc = inb(DATA);

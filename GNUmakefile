@@ -24,12 +24,12 @@ help:
 	@echo "  make flint     nasm the firmware (the striker)"
 	@echo "  make steel     cargo-cast the kernel crystal"
 	@echo "  make tinder    firmware ROM that catches"
-	@echo "  make image     cast the boot disk (KMAP + loader + kernel)"
+	@echo "  make image     cast the boot disk (KMAP + loader + kernel + ingle)"
 	@echo "  make hearth    QEMU bowl (alias: serial-fw)"
 	@echo "  make kindle    flint + steel + hearth — paved fire"
 	@echo "  make hearth-see   same fire, window (lilac VGA)"
 	@echo "  make audit     several bowls; fail if a line is missing"
-	@echo "  make below     full below gate (audit+trap+fmap+fw-trap+efi)"
+	@echo "  make below     full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle)"
 	@echo "  make below-ten    gate × 10"
 	@echo "  make test      throwaway VMs (happy..ingle) + grove on VGA"
 	@echo "  make serial-uefi   other people's firmware, our clothes"
@@ -46,8 +46,10 @@ tinder: flint
 hearth: serial-fw
 kindle: serial-fw
 image: $(IMAGE)
-$(IMAGE): flint steel $(LD_BIN) scripts/mkimg.py
-	python3 scripts/mkimg.py --loader $(LD_BIN) --kernel kernel/kernel.fw.bin --out $@
+$(IMAGE): flint steel $(LD_BIN) scripts/mkimg.py spark/ingle.asm
+	$(NASM) -f bin -o spark/ingle.bin spark/ingle.asm
+	python3 scripts/mkimg.py --loader $(LD_BIN) --kernel kernel/kernel.fw.bin \
+		--spark ingle=spark/ingle.bin --out $@ --cairn-out spark/cairn.bin
 
 $(LD_BIN): ld/cerne-ld.asm
 	$(NASM) -f bin -o $@ $<
@@ -130,10 +132,11 @@ OVMF_VARS_SRC ?= $(firstword $(wildcard \
 	/usr/share/edk2/x64/OVMF_VARS.4m.fd \
 	/usr/share/edk2/x64/OVMF_VARS.fd))
 
-serial-uefi: efi
+serial-uefi: efi image
 	rm -rf esp
 	mkdir -p esp/EFI/BOOT
 	cp -v kernel/BOOTX64.EFI esp/EFI/BOOT/
+	cp -v spark/cairn.bin esp/EFI/BOOT/CAIRN
 	cp -f $(OVMF_VARS_SRC) ovmf_vars.fd
 	timeout --foreground --signal=KILL $(QEMU_TIMEOUT) \
 		$(QEMU) -M q35 -display none $(QEMUFLAGS) \

@@ -1,5 +1,11 @@
 # fae-kernel changelog
 
+## ingle-g25 (2026-10-05)
+
+- Paved boots carry `ingle`. `make image` packs `--spark ingle` and writes `spark/cairn.bin` (`--cairn-out`). After the well, the happy kernel calls `light_ingle`: missing cairn or spark is a quiet halt, never a FAIL line.
+- EFI reads `\EFI\BOOT\CAIRN` with GetProtocol SimpleFileSystem (not exclusive), AllocateAddress `0x100000`, plants KMAP scratch at `0x8400` after ExitBootServices. Missing file is honest — Grove still paints. ConOut prints `cairn` when the blob landed. Kindling's GDT (user segments + TSS) and 8259 remap (0x20/0x28) now run on the EFI path so CPL3 `ingle` can iretq and IRQ1 lands on the house vector. Asm-called `house_entry` / ticks are `extern "sysv64"` — the UEFI target's `extern "C"` is win64, which was turning `write` into `grant` and `read` into `exit`.
+- `make below` += `efi-ingle` (OVMF + sendkey). KINDLING stick takes `BOOTX64.EFI` + `EFI/BOOT/CAIRN`.
+
 ## ingle-g24 (2026-10-05)
 
 - House `read` (call 10) on fd 0: PS/2 8042, IRQ1, scancode set 1 → ASCII. No controller is `-EAGAIN`. Wrong fd is `-EPERM`. Blocks until a byte when live.

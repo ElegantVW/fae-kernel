@@ -87,8 +87,10 @@ pub fn dispatch(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
 }
 
 /// C entry for the asm stub: `(n, a0, a1, a2) -> ret`.
+/// Asm stub shuffles into SysV (`rdi,rsi,rdx,rcx`). The UEFI target's
+/// `extern "C"` is win64, so this is pinned.
 #[unsafe(no_mangle)]
-pub extern "C" fn house_entry(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
+pub extern "sysv64" fn house_entry(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
     dispatch(n, a0, a1, a2)
 }
 
