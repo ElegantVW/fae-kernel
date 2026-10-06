@@ -279,9 +279,10 @@ fn portsc(op: u64, port: u32) -> u64 {
     op + 0x400 + (port as u64 - 1) * 0x10
 }
 
-/// Preserve RO + RWS; leave RW1C change bits 0 (Linux xhci_port_state_to_neutral).
+/// Linux `xhci_port_state_to_neutral`. PED (bit 1) is RW1CS: writing 1
+/// *disables* the port. It is not RO — do not put it in the write.
 fn port_neutral(v: u32) -> u32 {
-    let ro = CCS | PED | (1 << 3) | (0xF << 10) | (1 << 30);
+    let ro = CCS | (1 << 3) | (0xF << 10) | (1 << 30);
     let rws = (0xF << 5) | PP | (0x3 << 14) | (0x7 << 25);
     (v & ro) | (v & rws)
 }
@@ -1221,23 +1222,29 @@ fn reset_port(h: &Host, port: u32) -> Option<u32> {
     if v & CCS == 0 {
         return None;
     }
+    if h.ppc && v & PP == 0 {
+        return None;
+    }
     bump(M_CCS);
+    port_ack(a);
+    let v = r32(a);
     let ss_port = (port as usize) < PORTS
         && h.st_usb3 != 0
         && h.port_st[port as usize] == h.st_usb3 as u8;
     let speed0 = (v >> 10) & 0xF;
-    if v & CAS != 0 || speed0 >= 4 || (v & PED == 0 && ss_port) {
+    let warm = ss_port || speed0 >= 4 || v & CAS != 0;
+    if warm {
         port_set(a, WPR);
-        if !wait_set(a, WRC, T_RST) {
+        if !wait_set(a, WRC, T_RST) && !wait_set(a, PED, T_RST) {
             return None;
         }
     } else {
         port_set(a, PR);
-        if !wait_set(a, PRC, T_RST) {
-            port_set(a, WPR);
-            if !wait_set(a, WRC, T_RST) {
-                return None;
-            }
+        if r32(a) & PR == 0 && r32(a) & PRC == 0 {
+            w32(a, port_neutral(r32(a)) | PR);
+        }
+        if !wait_eq(a, PR, 0, T_RST) {
+            return None;
         }
     }
     port_ack(a);
@@ -1269,8 +1276,8 @@ fn scan_root(h: &mut Host, tried: &mut [bool; PORTS]) {
             port = port.saturating_add(1);
             continue;
         }
-        tried[port as usize] = true;
         if let Some(speed) = reset_port(h, port) {
+            tried[port as usize] = true;
             recover();
             let ty = slot_type_for(h, speed, port);
             if let Some(slot) = enable_slot(h, ty) {

@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## usb-msc-g29e (2026-10-06)
+
+- Iron G29d printed `no rst`. PED (PORTSC bit 1) is RW1CS: writing 1 *disables* the port. `port_neutral` had copied Linux RO but included PED; after reset the ack wrote PED=1 and killed Enable. QEMU ignores that write. Neutral now matches Linux (CCS/OC/speed/PP/PLS only). USB2 waits for PR to self-clear; USB3 uses WPR. Never write 1 to PED unless we mean to disable.
+
 ## usb-msc-g29d (2026-10-06)
 
 - Iron G29c was a blink at `well` then still `no dev` (CCS, no GET_DESCRIPTOR). PORTSC writes now match Linux (preserve RO/RWS, do not write-1 all change bits with PR). USBLEGSUP waits up to 1 s for BIOS to drop the semaphore. Glass splits the miss: `no rst` / `no addr` / `no desc` / `no bot` / `no cap`. GET_DESCRIPTOR 18 still runs if the 8-byte probe stalls.

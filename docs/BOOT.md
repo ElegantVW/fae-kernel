@@ -78,8 +78,8 @@ or one hub hop). Miss is `no xhci` (no PCI class `0x0C0330`) or
 BOT mass-storage device answers READ CAPACITY (every root port and hub
 child is scanned; HID does not stop the walk). After HCRST the ports
 settle on the clock and are scanned twice so a late CCS (the boot stick)
-is seen. Port waits are milliseconds, not million-spin MMIO polls. Miss
-names the step: `no ccs` (no connect), `no rst` (connect, reset failed),
+is seen. Port waits are milliseconds. PED is write-1-to-clear: an ack
+must not write 1 to it or the port disables. Miss names the step: `no ccs` (no connect), `no rst` (connect, reset failed),
 `no addr` (reset, Address Device failed), `no desc` (addressed, no
 GET_DESCRIPTOR), `no bot` (no BOT interface), `no cap` (READ CAPACITY
 failed).

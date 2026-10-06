@@ -45,6 +45,7 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G29b | Iron MSC — clock settle + rescan after HCRST; miss names the step | efi-msc still `msc`; glass `no ccs`/`no dev`/`no bot`/`no cap` | yes |
 | G29c | Iron MSC wait — clock timeouts, one reset try, BAR sanity, EP0 8 | efi-msc/efi-usb still greet; well→xhci is a blink | yes |
 | G29d | Iron MSC PORTSC — Linux-neutral writes; miss is rst/addr/desc | efi-msc still `msc`; glass `no rst`/`no addr`/`no desc` | yes |
+| G29e | Iron PORTSC PED — bit 1 is RW1CS; never write 1 after reset | efi-msc still `msc`; PR self-clear on USB2 | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 
