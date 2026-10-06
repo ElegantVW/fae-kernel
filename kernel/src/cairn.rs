@@ -225,9 +225,11 @@ fn take_name(name_ptr: u64) -> Result<([u8; 64], usize), u64> {
 }
 
 /// Gather a leaf's bytes: `rdi` = name, `rsi` = buf, `rdx` = len (cap 1 MiB).
-/// Returns bytes copied (a short read when the leaf is longer is honest, not
-/// an error) or `-errno`. v0 trusts mapped RAM for pointers; spawn's realm
-/// still lets the kernel copy (CPL0 ignores U/S). User pointer checks wait.
+/// Cairn first. If that name is missing (or there is no cairn) and a FAT
+/// volume is live, the volume's root by the same Gleam name. Returns bytes
+/// copied (a short read when the leaf is longer is honest, not an error) or
+/// `-errno`. v0 trusts mapped RAM for pointers; spawn's realm still lets the
+/// kernel copy (CPL0 ignores U/S). User pointer checks wait.
 pub fn glean(name_ptr: u64, buf: u64, len: u64) -> u64 {
     if buf == 0 || len == 0 || len > MAX_DATA {
         return err(EPERM);
@@ -236,21 +238,35 @@ pub fn glean(name_ptr: u64, buf: u64, len: u64) -> u64 {
         Ok(v) => v,
         Err(e) => return err(e),
     };
-    let Some(c) = open() else {
-        return err(ENODEV);
-    };
-    match find(&c, &name[..nl], 0) {
-        Ok((da, dl)) => {
-            let n = len.min(dl);
-            let mut i = 0u64;
-            while i < n {
-                let b = unsafe { ((da + i) as *const u8).read_volatile() };
-                unsafe { ((buf + i) as *mut u8).write_volatile(b) };
-                i += 1;
-            }
-            n
-        }
-        Err(e) => err(e),
+    let nm = &name[..nl];
+    match open() {
+        Some(c) => match find(&c, nm, 0) {
+            Ok((da, dl)) => copy_leaf(da, dl, buf, len),
+            Err(e) if e == EIO => err(EIO),
+            Err(_) => glean_volume(nm, buf, len, true),
+        },
+        None => glean_volume(nm, buf, len, false),
+    }
+}
+
+fn copy_leaf(da: u64, dl: u64, buf: u64, len: u64) -> u64 {
+    let n = len.min(dl);
+    let mut i = 0u64;
+    while i < n {
+        let b = unsafe { ((da + i) as *const u8).read_volatile() };
+        unsafe { ((buf + i) as *mut u8).write_volatile(b) };
+        i += 1;
+    }
+    n
+}
+
+fn glean_volume(name: &[u8], buf: u64, len: u64, had_cairn: bool) -> u64 {
+    if crate::usb::fat_live() {
+        crate::usb::glean_fat(name, buf, len)
+    } else if had_cairn {
+        err(ENOENT)
+    } else {
+        err(ENODEV)
     }
 }
 

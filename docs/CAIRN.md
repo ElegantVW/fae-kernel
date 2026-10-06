@@ -3,7 +3,10 @@
 The cairn is the pile of stones on the disk: every leaf (file) and spark
 (executable) the loader lays by the kernel. Packed at cast time by
 `scripts/mkimg.py`, delivered to RAM by `ld/cerne-ld.asm`, read by Kindling.
-Gleam-only. No FAT, no ext, no foreign shapes.
+Gleam-shaped. `glean` gathers a named leaf from the cairn first; when that
+name is missing and a FAT volume is live (the Databar's medium), it gathers
+from the volume's **root** by the same Gleam name (1–64, no `/`). FAT 8.3
+and LFN fold into that name. No `open`, no paths this sitting.
 
 ## Disk
 
@@ -32,8 +35,11 @@ own checksum the kernel checks:
 | 28 | u32 | `cairn_sum` = `cairn_lba xor cairn_sectors xor cairn_xor xor 'CAIR'` |
 
 `cairn_xor` is the XOR of every dword of the sector-padded cairn, same rite
-as the kernel. A missing cairn (`cairn_lba == 0`) is honest, not an error —
-`glean` then refuses with `-ENODEV`.
+as the kernel. A missing cairn (`cairn_lba == 0`) is honest: `glean` then
+walks a live FAT volume's root, or refuses `-ENODEV` when that volume is
+dark too. A cairn that is present but has no such name is `-ENOENT` (or
+the volume leaf, when FAT is live). A bad cairn xor stays `-EIO` — never
+partial bytes, never a silent fall-through.
 
 ## Cairn image (at `cairn_lba`, in RAM at `0x100000`)
 
@@ -108,9 +114,11 @@ is the design working.
 ## Words (house voice, no collisions)
 
 - **cairn** — the store (stone pile for many pages; `fae-names.md` §6).
-- **leaf** — a file (the Grove's leaves). Flat names, no paths yet.
+- **leaf** — a file (the Grove's leaves). Flat names, no paths yet. G32
+  proof on the QEMU volume is Gleam name `LEAF` (the spark `leaf` waits).
 - **spark** — an executable leaf (small fire that runs at CPL3).
-- **glean** — house call 8: gather a leaf's bytes.
+- **glean** — house call 8: gather a leaf's bytes (cairn first, then the
+  volume root when FAT is live).
 - **stow** — house call 9 (lay bytes down; G2b write path).
 - **spawn** — house call 5 (named spark, private pages, own cup + CR3).
 - **tale** — the first spark: speaks a leaf, then exits.

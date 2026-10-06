@@ -3,8 +3,9 @@
 
 Port 1 is the keyboard so a HID-first scan would miss the stick on port 2.
 READ CAPACITY must print `kindling: msc`; READ(10) of the FAT partition
-boot sector prints `kindling: fat`. The image is MBR + FAT32 at LBA 2048,
-like the Databar. Enter still greets through HID.
+boot sector prints `kindling: fat`. The image is MBR + a real FAT32 at
+LBA 2048 (like the Databar) with Gleam leaf `LEAF` whose page is
+`the volume speaks`. Enter still greets through HID.
 """
 from __future__ import annotations
 
@@ -66,6 +67,47 @@ def read_until(sock: socket.socket, mark: str, timeout: float) -> str:
     return buf
 
 
+PAGE = b"the volume speaks\n"
+
+
+def plant_fat32(img: bytearray, part_lba: int = 2048, part_secs: int = 2048) -> None:
+    """Tiny FAT32: reserved 32, 2×FATSz32 16, root cluster 2, file LEAF in cluster 3."""
+    fat = part_lba * 512
+    img[fat : fat + 3] = b"\xeb\x58\x90"
+    img[fat + 3 : fat + 11] = b"MSDOS5.0"
+    img[fat + 11 : fat + 13] = (512).to_bytes(2, "little")
+    img[fat + 13] = 1
+    img[fat + 14 : fat + 16] = (32).to_bytes(2, "little")
+    img[fat + 16] = 2
+    img[fat + 17 : fat + 19] = (0).to_bytes(2, "little")
+    img[fat + 19 : fat + 21] = (0).to_bytes(2, "little")
+    img[fat + 21] = 0xF8
+    img[fat + 22 : fat + 24] = (0).to_bytes(2, "little")
+    img[fat + 24 : fat + 26] = (32).to_bytes(2, "little")
+    img[fat + 26 : fat + 28] = (2).to_bytes(2, "little")
+    img[fat + 28 : fat + 32] = part_lba.to_bytes(4, "little")
+    img[fat + 32 : fat + 36] = part_secs.to_bytes(4, "little")
+    img[fat + 36 : fat + 40] = (16).to_bytes(4, "little")
+    img[fat + 44 : fat + 48] = (2).to_bytes(4, "little")
+    img[fat + 48 : fat + 50] = (1).to_bytes(2, "little")
+    img[fat + 50 : fat + 52] = (6).to_bytes(2, "little")
+    img[fat + 82 : fat + 90] = b"FAT32   "
+    img[fat + 510] = 0x55
+    img[fat + 511] = 0xAA
+    fat1 = fat + 32 * 512
+    for clus, val in ((0, 0x0FFFFFF8), (1, 0x0FFFFFFF), (2, 0x0FFFFFFF), (3, 0x0FFFFFFF)):
+        off = fat1 + clus * 4
+        img[off : off + 4] = (val & 0x0FFFFFFF).to_bytes(4, "little")
+    fat2 = fat + (32 + 16) * 512
+    img[fat2 : fat2 + 16 * 512] = img[fat1 : fat1 + 16 * 512]
+    data = fat + 64 * 512
+    img[data : data + 11] = b"LEAF       "
+    img[data + 11] = 0x20
+    img[data + 26 : data + 28] = (3).to_bytes(2, "little")
+    img[data + 28 : data + 32] = len(PAGE).to_bytes(4, "little")
+    img[data + 512 : data + 512 + len(PAGE)] = PAGE
+
+
 def serial_has(mark: str, timeout: float) -> str:
     end = time.time() + timeout
     text = ""
@@ -106,14 +148,15 @@ def main() -> int:
     img[446 + 4] = 0x0C
     img[446 + 8 : 446 + 12] = (2048).to_bytes(4, "little")
     img[446 + 12 : 446 + 16] = (2048).to_bytes(4, "little")
+    plant_fat32(img)
     fat = 2048 * 512
-    img[fat : fat + 3] = b"\xeb\x58\x90"
-    img[fat + 3 : fat + 11] = b"MSDOS5.0"
-    img[fat + 11 : fat + 13] = (512).to_bytes(2, "little")
-    img[fat + 13] = 1
-    img[fat + 82 : fat + 90] = b"FAT32   "
-    img[fat + 510] = 0x55
-    img[fat + 511] = 0xAA
+    if img[fat + 82 : fat + 87] != b"FAT32" or img[fat + 510] != 0x55:
+        print("FAIL efi-msc (planted boot sector is not FAT32)", file=sys.stderr)
+        return 1
+    data = fat + 64 * 512
+    if img[data : data + 11] != b"LEAF       " or img[data + 512 : data + 512 + len(PAGE)] != PAGE:
+        print("FAIL efi-msc (planted LEAF is missing)", file=sys.stderr)
+        return 1
     Path(IMG).write_bytes(img)
     shutil.copyfile(vars_src, VARS)
     errf = open(ERR, "wb")
@@ -181,6 +224,13 @@ def main() -> int:
                 print(Path(ERR).read_text(errors="replace")[-400:])
             except OSError:
                 pass
+            return 1
+        if "the volume speaks" not in t:
+            serial = serial_has("the volume speaks", 8)
+            t = serial.replace("\r", "")
+        if "the volume speaks" not in t:
+            print("FAIL efi-msc (glean missed LEAF — the volume never spoke)")
+            print(serial[-600:])
             return 1
         if "kindling: ingle ok\ningle\n" not in t:
             serial = serial_has("kindling: ingle ok\ningle\n", 8)

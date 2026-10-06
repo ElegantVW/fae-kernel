@@ -249,6 +249,19 @@ unsafe extern "C" fn after_cup() -> ! {
             serial_print("\n");
             crate::glass::put_bytes(line.as_ptr(), line.len() as u64);
             crate::glass::put_bytes(b"\n".as_ptr(), 1);
+            if crate::usb::fat_live() {
+                let name = b"LEAF\0";
+                let mut page = [0u8; 64];
+                let n = crate::cairn::glean(name.as_ptr() as u64, page.as_mut_ptr() as u64, 64);
+                if (n as i64) > 0 && n <= 64 {
+                    crate::glass::put_bytes(page.as_ptr(), n);
+                    let mut i = 0u64;
+                    while i < n {
+                        serial_put_byte(page[i as usize]);
+                        i += 1;
+                    }
+                }
+            }
         }
     }
     #[cfg(feature = "house-test")]
