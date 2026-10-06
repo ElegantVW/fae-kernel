@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## usb-msc-g29h (2026-10-06)
+
+- Iron G29g printed `no fat` after `msc`. READ(10) of 512 B lived; LBA 0 is the Databar MBR (`0x55AA`, type `0x0c` at start 2048). `probe_fat` reads LBA 0, then each FAT-type MBR partition, then GPT entries if the protective type is `0xEE`. Superfloppy LBA 0 still counts. QEMU efi-msc is now MBR + FAT32 at 2048, matching iron.
+
 ## usb-msc-g29g (2026-10-06)
 
 - Iron G29f printed `msc`: BOT and READ CAPACITY lived on the Databar. READ(10) now takes LBA 0 (512 B). Glass `fat` when the boot sector is 0x55AA plus `FAT32`/`FAT1`; `no fat` if the read misses or the sector is not FAT. QEMU efi-msc plants a FAT32 signature on the usb-storage image. No WRITE. Stow stays ATA; KINDLOG waits.

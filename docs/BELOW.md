@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → loader (off the disk) → Kindling spark. House light (G15–G29g) is on.
+Firmware → loader (off the disk) → Kindling spark. House light (G15–G29h) is on.
 Linux ELF waits on its own gate. This file staying green is still the law.
 
 Run: `make below`  
@@ -48,6 +48,7 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G29e | Iron PORTSC PED — bit 1 is RW1CS; never write 1 after reset | efi-msc still `msc`; PR self-clear on USB2 | yes |
 | G29f | Iron EP0 — xHCI 1.0 control TDs (TRT, no Chain, hold first TRB) | efi-msc still `msc`; glass `no desc` was GET_DESCRIPTOR | yes |
 | G29g | Iron MSC READ(10) — LBA 0 boot sector; glass `fat` / `no fat` | efi-msc `msc` then `fat`; sendkey still greets | yes |
+| G29h | Iron FAT partition — MBR/GPT walk to the FAT boot sector | efi-msc MBR + FAT32 at LBA 2048; glass `fat` | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 

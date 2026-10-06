@@ -77,8 +77,8 @@ or one hub hop). Miss is `no xhci` (no PCI class `0x0C0330`) or
 `xhci` then `no usb` (HC ran, no keyboard). After `tick`, `msc` when a
 BOT mass-storage device answers READ CAPACITY (every root port and hub
 child is scanned; HID does not stop the walk). After `msc`, `fat` when
-READ(10) of LBA 0 is a FAT boot sector (`no fat` if the read or signature
-misses). After HCRST the ports
+READ(10) finds a FAT boot sector at LBA 0 or in an MBR/GPT partition
+(`no fat` if the read or signature misses). After HCRST the ports
 settle on the clock and are scanned twice so a late CCS (the boot stick)
 is seen. Port waits are milliseconds. PED is write-1-to-clear: an ack
 must not write 1 to it or the port disables. EP0 control TDs match

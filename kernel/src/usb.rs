@@ -1046,6 +1046,13 @@ fn bot(h: &mut Host, cdb: &[u8], buf: u64, data_len: u32, din: bool) -> bool {
     sig == CSW_SIG && stag == tag && status == 0
 }
 
+fn r32le(a: u64) -> u32 {
+    r8(a) as u32
+        | (r8(a + 1) as u32) << 8
+        | (r8(a + 2) as u32) << 16
+        | (r8(a + 3) as u32) << 24
+}
+
 fn looks_fat(p: u64) -> bool {
     if r8(p + 510) != 0x55 || r8(p + 511) != 0xAA {
         return false;
@@ -1057,6 +1064,110 @@ fn looks_fat(p: u64) -> bool {
         && r8(p + 86) == b'2';
     let fat16 = r8(p + 54) == b'F' && r8(p + 55) == b'A' && r8(p + 56) == b'T';
     fat32 || fat16
+}
+
+fn fat_part_type(ty: u8) -> bool {
+    matches!(ty, 0x01 | 0x04 | 0x06 | 0x0B | 0x0C | 0x0E | 0xEF)
+}
+
+fn lba32_at(a: u64) -> Option<u32> {
+    let lo = r32le(a);
+    let hi = r32le(a + 4);
+    if hi != 0 || lo == 0 {
+        None
+    } else {
+        Some(lo)
+    }
+}
+
+/// MSC sees the whole disk. LBA 0 is often an MBR; FAT lives in a partition
+/// (Databar KINDLING starts at 2048). Superfloppy LBA 0 still counts.
+fn probe_fat(h: &mut Host) -> bool {
+    let buf = h.data + MSC_DATA;
+    if !msc_read10(h, 0, buf, 1, 512) {
+        return false;
+    }
+    if looks_fat(buf) {
+        return true;
+    }
+    if r8(buf + 510) != 0x55 || r8(buf + 511) != 0xAA {
+        return false;
+    }
+    let mut starts = [0u32; 4];
+    let mut n = 0u32;
+    let mut gpt = false;
+    let mut i = 0u32;
+    while i < 4 {
+        let e = buf + 446 + i as u64 * 16;
+        let ty = r8(e + 4);
+        let start = r32le(e + 8);
+        if ty == 0xEE {
+            gpt = true;
+        } else if fat_part_type(ty) && start != 0 && (n as usize) < starts.len() {
+            starts[n as usize] = start;
+            n = n.saturating_add(1);
+        }
+        i = i.saturating_add(1);
+    }
+    let mut k = 0u32;
+    while k < n {
+        if msc_read10(h, starts[k as usize], buf, 1, 512) && looks_fat(buf) {
+            return true;
+        }
+        k = k.saturating_add(1);
+    }
+    gpt && probe_gpt(h, buf)
+}
+
+fn probe_gpt(h: &mut Host, buf: u64) -> bool {
+    if !msc_read10(h, 1, buf, 1, 512) {
+        return false;
+    }
+    if r8(buf) != b'E'
+        || r8(buf + 1) != b'F'
+        || r8(buf + 2) != b'I'
+        || r8(buf + 3) != b' '
+        || r8(buf + 4) != b'P'
+        || r8(buf + 5) != b'A'
+        || r8(buf + 6) != b'R'
+        || r8(buf + 7) != b'T'
+    {
+        return false;
+    }
+    let part_lba = lba32_at(buf + 72).unwrap_or(2);
+    let nent = r32le(buf + 80).min(32);
+    let esz = r32le(buf + 84);
+    if esz != 128 || part_lba == 0 {
+        return false;
+    }
+    let per = 512 / 128;
+    let mut starts = [0u32; 16];
+    let mut n = 0u32;
+    let mut idx = 0u32;
+    while idx < nent && (n as usize) < starts.len() {
+        if idx % per == 0 {
+            let sec = part_lba.saturating_add(idx / per);
+            if !msc_read10(h, sec, buf, 1, 512) {
+                break;
+            }
+        }
+        let e = buf + (idx % per) as u64 * 128;
+        if r32le(e) != 0 {
+            if let Some(s) = lba32_at(e + 32) {
+                starts[n as usize] = s;
+                n = n.saturating_add(1);
+            }
+        }
+        idx = idx.saturating_add(1);
+    }
+    let mut k = 0u32;
+    while k < n {
+        if msc_read10(h, starts[k as usize], buf, 1, 512) && looks_fat(buf) {
+            return true;
+        }
+        k = k.saturating_add(1);
+    }
+    false
 }
 
 fn msc_read10(h: &mut Host, lba: u32, buf: u64, blocks: u16, blk: u32) -> bool {
@@ -1148,11 +1259,8 @@ fn try_msc(
         | (r8(h.data + MSC_DATA + 5) as u32) << 16
         | (r8(h.data + MSC_DATA + 6) as u32) << 8
         | r8(h.data + MSC_DATA + 7) as u32;
-    if blk == 512
-        && msc_read10(h, 0, h.data + MSC_DATA, 1, 512)
-        && looks_fat(h.data + MSC_DATA)
-    {
-        h.fat = true;
+    if blk == 512 {
+        h.fat = probe_fat(h);
     }
     true
 }
