@@ -8,6 +8,8 @@ use crate::start::{serial_hex, serial_print};
 const PAGE: usize = 4096;
 const SPINS: u32 = 4_000_000;
 const RING: u32 = 256;
+const SLOTS: usize = 17;
+const PORTS: usize = 32;
 
 const TRB_NORMAL: u32 = 1;
 const TRB_SETUP: u32 = 2;
@@ -17,6 +19,7 @@ const TRB_LINK: u32 = 6;
 const TRB_ENABLE_SLOT: u32 = 9;
 const TRB_ADDRESS: u32 = 11;
 const TRB_CONFIG_EP: u32 = 12;
+const TRB_EVAL: u32 = 13;
 const TRB_XFER: u32 = 32;
 const TRB_CMD: u32 = 33;
 const TRB_PORT: u32 = 34;
@@ -50,6 +53,11 @@ const PORT_CHG: u32 = CSC | PEC | WRC | OCC | PRC | PLC | CEC;
 const CC_OK: u32 = 1;
 const CC_SHORT: u32 = 13;
 
+const FEAT_PORT_RESET: u16 = 4;
+const FEAT_PORT_POWER: u16 = 8;
+const FEAT_C_PORT_RESET: u16 = 20;
+
+#[derive(Clone, Copy)]
 struct Ring {
     base: u64,
     i: u32,
@@ -73,11 +81,13 @@ struct Host {
     evt: Evt,
     dcbaa: u64,
     in_ctx: u64,
-    out_ctx: u64,
-    ep0: Ring,
+    slot_ep0: [Ring; SLOTS],
     intr: Ring,
     data: u64,
     report: u64,
+    port_st: [u8; PORTS],
+    st_usb2: u32,
+    st_usb3: u32,
     cmd_seen: bool,
     cmd_code: u32,
     cmd_slot: u32,
@@ -93,6 +103,7 @@ unsafe impl Sync for HostCell {}
 
 static HOST: HostCell = HostCell(UnsafeCell::new(None));
 static mut KBD: bool = false;
+static mut FOUND: bool = false;
 
 fn host_mut() -> &'static mut Option<Host> {
     unsafe { &mut *HOST.0.get() }
@@ -162,6 +173,14 @@ fn wait_set(addr: u64, mask: u32) -> bool {
         core::hint::spin_loop();
     }
     false
+}
+
+fn pause() {
+    let mut n = 0u32;
+    while n < 200_000 {
+        n = n.saturating_add(1);
+        core::hint::spin_loop();
+    }
 }
 
 fn ring_new(base: u64) -> Ring {
@@ -318,31 +337,63 @@ fn command(h: &mut Host, param: u64, status: u32, ctrl: u32) -> bool {
     false
 }
 
-fn enable_slot(h: &mut Host) -> Option<u8> {
-    if !command(h, 0, 0, TRB_ENABLE_SLOT << 10) {
+fn slot_type_for(h: &Host, speed: u32, root_port: u32) -> u32 {
+    if (1..PORTS as u32).contains(&root_port) {
+        let t = h.port_st[root_port as usize] as u32;
+        if t != 0 {
+            return t;
+        }
+    }
+    if speed >= 4 {
+        h.st_usb3
+    } else {
+        h.st_usb2
+    }
+}
+
+fn enable_slot(h: &mut Host, ty: u32) -> Option<u8> {
+    if !command(h, 0, 0, (TRB_ENABLE_SLOT << 10) | (ty << 16)) {
         return None;
     }
     let s = h.cmd_slot as u8;
-    if s == 0 {
+    if s == 0 || (s as usize) >= SLOTS {
         None
     } else {
         Some(s)
     }
 }
 
-fn address_device(h: &mut Host, slot: u8, port: u32, speed: u32) -> bool {
+fn bind_slot(h: &mut Host, slot: u8) {
+    let out = page();
+    w64(h.dcbaa + slot as u64 * 8, out);
+    let ep0 = page();
+    h.slot_ep0[slot as usize] = ring_new(ep0);
+}
+
+fn fill_slot_ctx(h: &Host, speed: u32, root_port: u32, route: u32, tt_slot: u32, tt_port: u32, entries: u32) {
+    let cs = h.ctxsz as u64;
+    let slot_ctx = h.in_ctx + cs;
+    w32(slot_ctx, (entries << 27) | (speed << 20) | (route & 0xF_FFFF));
+    w32(slot_ctx + 4, root_port << 16);
+    w32(slot_ctx + 8, (tt_slot & 0xFF) | ((tt_port & 0xFF) << 8));
+}
+
+fn address_device(
+    h: &mut Host,
+    slot: u8,
+    root_port: u32,
+    speed: u32,
+    route: u32,
+    tt_slot: u32,
+    tt_port: u32,
+) -> bool {
+    bind_slot(h, slot);
     unsafe {
         core::ptr::write_bytes(h.in_ctx as *mut u8, 0, PAGE);
-        core::ptr::write_bytes(h.out_ctx as *mut u8, 0, PAGE);
-        core::ptr::write_bytes(h.ep0.base as *mut u8, 0, PAGE);
     }
-    h.ep0 = ring_new(h.ep0.base);
     let cs = h.ctxsz as u64;
-    // Input control: A0 | A1
     w32(h.in_ctx + 4, 0b11);
-    let slot_ctx = h.in_ctx + cs;
-    w32(slot_ctx, (1 << 27) | (speed << 20));
-    w32(slot_ctx + 4, port << 16);
+    fill_slot_ctx(h, speed, root_port, route, tt_slot, tt_port, 1);
     let ep0 = h.in_ctx + 2 * cs;
     let mps: u32 = match speed {
         2 => 8,
@@ -350,8 +401,8 @@ fn address_device(h: &mut Host, slot: u8, port: u32, speed: u32) -> bool {
         _ => 64,
     };
     w32(ep0 + 4, (mps << 16) | (4 << 3) | (3 << 1));
-    w64(ep0 + 8, h.ep0.base | h.ep0.c as u64);
-    w64(h.dcbaa + slot as u64 * 8, h.out_ctx);
+    let ring = h.slot_ep0[slot as usize];
+    w64(ep0 + 8, ring.base | ring.c as u64);
     command(
         h,
         h.in_ctx,
@@ -369,13 +420,13 @@ fn control(h: &mut Host, slot: u8, setup: [u8; 8], buf: u64, len: u16, din: bool
     } else {
         3
     };
-    let _ = h.ep0.enq(pkt, 8, (TRB_SETUP << 10) | IDT | CH | (trt << 16));
+    let _ = h.slot_ep0[slot as usize].enq(pkt, 8, (TRB_SETUP << 10) | IDT | CH | (trt << 16));
     if len != 0 {
         let dir = if din { 1u32 << 16 } else { 0 };
-        let _ = h.ep0.enq(buf, len as u32, (TRB_DATA << 10) | CH | dir);
+        let _ = h.slot_ep0[slot as usize].enq(buf, len as u32, (TRB_DATA << 10) | CH | dir);
     }
     let sdir = if din && len != 0 { 0 } else { 1u32 << 16 };
-    let _ = h.ep0.enq(0, 0, (TRB_STATUS << 10) | IOC | sdir);
+    let _ = h.slot_ep0[slot as usize].enq(0, 0, (TRB_STATUS << 10) | IOC | sdir);
     h.xfer_seen = false;
     doorbell(h, slot as u32, 1);
     let mut n = 0u32;
@@ -421,6 +472,45 @@ fn hid_set(h: &mut Host, slot: u8, iface: u8, req: u8, value: u16) -> bool {
     control(h, slot, s, 0, 0, false)
 }
 
+fn hub_feat(h: &mut Host, slot: u8, set: bool, feat: u16, port: u8) -> bool {
+    let mut s = [0u8; 8];
+    s[0] = 0x23;
+    s[1] = if set { 3 } else { 1 };
+    s[2] = (feat & 0xFF) as u8;
+    s[3] = (feat >> 8) as u8;
+    s[4] = port;
+    control(h, slot, s, 0, 0, false)
+}
+
+fn hub_port_status(h: &mut Host, slot: u8, port: u8) -> Option<u32> {
+    let mut s = [0u8; 8];
+    s[0] = 0xA3;
+    s[4] = port;
+    s[6] = 4;
+    unsafe {
+        core::ptr::write_bytes(h.data as *mut u8, 0, 8);
+    }
+    if !control(h, slot, s, h.data, 4, true) {
+        return None;
+    }
+    Some(unsafe { (h.data as *const u32).read_volatile() })
+}
+
+fn hub_desc(h: &mut Host, slot: u8) -> Option<u8> {
+    let mut s = [0u8; 8];
+    s[0] = 0xA0;
+    s[1] = 6;
+    s[3] = 0x29;
+    s[6] = 12;
+    unsafe {
+        core::ptr::write_bytes(h.data as *mut u8, 0, 16);
+    }
+    if !control(h, slot, s, h.data, 12, true) {
+        return None;
+    }
+    Some(unsafe { (h.data as *const u8).add(2).read() })
+}
+
 fn ep_interval(speed: u32, binterval: u8) -> u32 {
     if speed >= 3 {
         binterval.saturating_sub(1).min(15) as u32
@@ -438,8 +528,11 @@ fn ep_interval(speed: u32, binterval: u8) -> u32 {
 fn config_intr(
     h: &mut Host,
     slot: u8,
-    port: u32,
+    root_port: u32,
     speed: u32,
+    route: u32,
+    tt_slot: u32,
+    tt_port: u32,
     ep_addr: u8,
     maxpkt: u16,
     binterval: u8,
@@ -454,9 +547,7 @@ fn config_intr(
     h.intr = ring_new(h.intr.base);
     let cs = h.ctxsz as u64;
     w32(h.in_ctx + 4, (1 << dci) | 1);
-    let slot_ctx = h.in_ctx + cs;
-    w32(slot_ctx, (dci << 27) | (speed << 20));
-    w32(slot_ctx + 4, port << 16);
+    fill_slot_ctx(h, speed, root_port, route, tt_slot, tt_port, dci);
     let ep = h.in_ctx + (dci as u64 + 1) * cs;
     let interval = ep_interval(speed, binterval);
     w32(ep, interval << 16);
@@ -476,8 +567,8 @@ fn config_intr(
     true
 }
 
+/// iface, ep_addr, maxpkt, binterval, cfg_value
 fn parse_hid(h: &Host) -> Option<(u8, u8, u16, u8, u8)> {
-    // iface, ep_addr, maxpkt, binterval, cfg_value
     unsafe {
         let p = h.data as *const u8;
         let total = p.add(2).read() as u16 | ((p.add(3).read() as u16) << 8);
@@ -495,9 +586,8 @@ fn parse_hid(h: &Host) -> Option<(u8, u8, u16, u8, u8)> {
             if ty == 4 && len >= 9 {
                 iface = p.add(off as usize + 2).read();
                 let class = p.add(off as usize + 5).read();
-                let sub = p.add(off as usize + 6).read();
                 let proto = p.add(off as usize + 7).read();
-                want = class == 3 && sub == 1 && proto == 1;
+                want = class == 3 && proto == 1;
             } else if ty == 5 && len >= 7 && want {
                 let addr = p.add(off as usize + 2).read();
                 let attr = p.add(off as usize + 3).read();
@@ -515,15 +605,248 @@ fn parse_hid(h: &Host) -> Option<(u8, u8, u16, u8, u8)> {
     }
 }
 
+fn cfg_value(h: &Host) -> u8 {
+    unsafe { (h.data as *const u8).add(5).read() }
+}
+
+fn is_hub_iface(h: &Host) -> bool {
+    unsafe {
+        let p = h.data as *const u8;
+        let total = p.add(2).read() as u16 | ((p.add(3).read() as u16) << 8);
+        let mut off = 0u16;
+        while off + 2 <= total && (off as usize) < PAGE {
+            let len = p.add(off as usize).read();
+            if len < 2 {
+                break;
+            }
+            let ty = p.add(off as usize + 1).read();
+            if ty == 4 && len >= 9 && p.add(off as usize + 5).read() == 9 {
+                return true;
+            }
+            off = off.saturating_add(len as u16);
+        }
+        false
+    }
+}
+
+fn get_config(h: &mut Host, slot: u8) -> bool {
+    if !get_desc(h, slot, 2, 0, 9) {
+        return false;
+    }
+    let total = unsafe {
+        let p = h.data as *const u8;
+        p.add(2).read() as u16 | ((p.add(3).read() as u16) << 8)
+    };
+    if total < 9 || total as usize > PAGE {
+        return false;
+    }
+    get_desc(h, slot, 2, 0, total)
+}
+
+fn try_hid(
+    h: &mut Host,
+    slot: u8,
+    root_port: u32,
+    speed: u32,
+    route: u32,
+    tt_slot: u32,
+    tt_port: u32,
+) -> bool {
+    if !get_config(h, slot) {
+        return false;
+    }
+    let Some((iface, ep, maxpkt, interval, cfg)) = parse_hid(h) else {
+        return false;
+    };
+    if !set_config(h, slot, cfg) {
+        return false;
+    }
+    let _ = hid_set(h, slot, iface, 0x0A, 0);
+    let _ = hid_set(h, slot, iface, 0x0B, 0);
+    if !config_intr(
+        h,
+        slot,
+        root_port,
+        speed,
+        route,
+        tt_slot,
+        tt_port,
+        ep,
+        maxpkt.max(8),
+        interval,
+    ) {
+        return false;
+    }
+    h.kbd_slot = slot;
+    h.kbd_prev = [0; 6];
+    let _ = h.intr.enq(h.report, 8, (TRB_NORMAL << 10) | IOC | ISP);
+    doorbell(h, slot as u32, h.kbd_dci as u32);
+    true
+}
+
+fn hub_child_speed(status: u32) -> u32 {
+    // wPortStatus: bit 10 LS, bit 11 HS; else FS. SS hubs use different bits.
+    if status & (1 << 10) != 0 {
+        2
+    } else if status & (1 << 11) != 0 {
+        3
+    } else {
+        1
+    }
+}
+
+fn evaluate_hub(h: &mut Host, slot: u8, root_port: u32, speed: u32, nports: u32) -> bool {
+    unsafe {
+        core::ptr::write_bytes(h.in_ctx as *mut u8, 0, PAGE);
+    }
+    let cs = h.ctxsz as u64;
+    w32(h.in_ctx + 4, 1);
+    fill_slot_ctx(h, speed, root_port, 0, 0, 0, 1);
+    let slot_ctx = h.in_ctx + cs;
+    w32(slot_ctx, r32(slot_ctx) | (1 << 26));
+    w32(slot_ctx + 4, r32(slot_ctx + 4) | (nports << 24));
+    command(
+        h,
+        h.in_ctx,
+        0,
+        (TRB_EVAL << 10) | ((slot as u32) << 24),
+    )
+}
+
+fn hub_wait(h: &mut Host, slot: u8, port: u8, mask: u32, want: u32) -> Option<u32> {
+    let mut n = 0u32;
+    while n < 32 {
+        if let Some(st) = hub_port_status(h, slot, port) {
+            if st & mask == want {
+                return Some(st);
+            }
+        }
+        pause();
+        n = n.saturating_add(1);
+    }
+    hub_port_status(h, slot, port)
+}
+
+fn try_hub(
+    h: &mut Host,
+    hub_slot: u8,
+    root_port: u32,
+    hub_speed: u32,
+) -> bool {
+    if !get_config(h, hub_slot) {
+        return false;
+    }
+    let cfg = cfg_value(h);
+    if !set_config(h, hub_slot, cfg) {
+        return false;
+    }
+    let Some(nports) = hub_desc(h, hub_slot) else {
+        return false;
+    };
+    let nports = nports.min(15);
+    let _ = evaluate_hub(h, hub_slot, root_port, hub_speed, nports as u32);
+    let mut hp = 1u8;
+    while hp <= nports {
+        let _ = hub_feat(h, hub_slot, true, FEAT_PORT_POWER, hp);
+        let Some(st) = hub_wait(h, hub_slot, hp, 1, 1) else {
+            hp = hp.saturating_add(1);
+            continue;
+        };
+        if st & 1 == 0 {
+            hp = hp.saturating_add(1);
+            continue;
+        }
+        let _ = hub_feat(h, hub_slot, true, FEAT_PORT_RESET, hp);
+        let Some(st) = hub_wait(h, hub_slot, hp, 2, 2) else {
+            hp = hp.saturating_add(1);
+            continue;
+        };
+        let _ = hub_feat(h, hub_slot, false, FEAT_C_PORT_RESET, hp);
+        if st & 2 == 0 {
+            hp = hp.saturating_add(1);
+            continue;
+        }
+        let speed = hub_child_speed(st);
+        let ty = slot_type_for(h, speed, root_port);
+        let Some(child) = enable_slot(h, ty) else {
+            hp = hp.saturating_add(1);
+            continue;
+        };
+        let tt_slot = if hub_speed >= 3 && speed <= 2 {
+            hub_slot as u32
+        } else {
+            0
+        };
+        let tt_port = if tt_slot != 0 { hp as u32 } else { 0 };
+        if address_device(h, child, root_port, speed, hp as u32, tt_slot, tt_port)
+            && try_hid(h, child, root_port, speed, hp as u32, tt_slot, tt_port)
+        {
+            return true;
+        }
+        hp = hp.saturating_add(1);
+    }
+    false
+}
+
+fn try_tree(
+    h: &mut Host,
+    slot: u8,
+    root_port: u32,
+    speed: u32,
+    route: u32,
+    tt_slot: u32,
+    tt_port: u32,
+) -> bool {
+    if !get_desc(h, slot, 1, 0, 18) {
+        return false;
+    }
+    let class = unsafe { (h.data as *const u8).add(4).read() };
+    if class == 9 {
+        return try_hub(h, slot, root_port, speed);
+    }
+    if try_hid(h, slot, root_port, speed, route, tt_slot, tt_port) {
+        return true;
+    }
+    if get_config(h, slot) && is_hub_iface(h) {
+        return try_hub(h, slot, root_port, speed);
+    }
+    false
+}
+
+fn power_ports(h: &Host) {
+    if !h.ppc {
+        return;
+    }
+    let mut port = 1u32;
+    while port <= h.max_ports {
+        let a = portsc(h.op, port);
+        w32(a, r32(a) | PP | PORT_CHG);
+        port = port.saturating_add(1);
+    }
+    let mut port = 1u32;
+    while port <= h.max_ports {
+        let _ = wait_set(portsc(h.op, port), PP);
+        port = port.saturating_add(1);
+    }
+    let mut n = 0u32;
+    while n < 40 {
+        let mut port = 1u32;
+        while port <= h.max_ports {
+            if r32(portsc(h.op, port)) & CCS != 0 {
+                return;
+            }
+            port = port.saturating_add(1);
+        }
+        pause();
+        n = n.saturating_add(1);
+    }
+}
+
 fn reset_port(h: &Host, port: u32) -> Option<u32> {
     let a = portsc(h.op, port);
     let v = r32(a);
     if v & CCS == 0 {
         return None;
-    }
-    if h.ppc && v & PP == 0 {
-        w32(a, v | PP);
-        let _ = wait_set(a, PP);
     }
     w32(a, r32(a) | PR | PORT_CHG);
     if !wait_set(a, PRC) {
@@ -544,76 +867,62 @@ fn reset_port(h: &Host, port: u32) -> Option<u32> {
     }
 }
 
-fn take_legacy(bar: u64, xecp: u32) {
+fn parse_caps(bar: u64, xecp: u32, port_st: &mut [u8; PORTS], st2: &mut u32, st3: &mut u32) {
     if xecp == 0 {
         return;
     }
-    let mut off = xecp as u64 * 4;
+    // Next is a DWORD offset from this capability, not from the BAR.
+    let mut off = xecp as u64;
     let mut hops = 0u32;
     while off != 0 && hops < 32 {
-        let cap = r32(bar + off);
+        let cap = r32(bar + off * 4);
         let id = cap & 0xFF;
         let next = (cap >> 8) & 0xFF;
+        let major = (cap >> 24) & 0xFF;
         if id == 1 {
-            w32(bar + off, cap | (1 << 24));
+            w32(bar + off * 4, cap | (1 << 24));
             let mut n = 0u32;
             while n < SPINS {
-                if r32(bar + off) & (1 << 16) == 0 {
+                if r32(bar + off * 4) & (1 << 16) == 0 {
                     break;
                 }
                 n = n.saturating_add(1);
                 core::hint::spin_loop();
             }
-            w32(bar + off + 4, 0);
-            return;
+            w32(bar + off * 4 + 4, 0);
+        } else if id == 2 {
+            let d2 = r32(bar + off * 4 + 8);
+            let poff = d2 & 0xFF;
+            let pcnt = (d2 >> 8) & 0xFF;
+            let sty = ((d2 >> 16) & 0xF) as u8;
+            if major == 2 {
+                *st2 = sty as u32;
+            }
+            if major == 3 {
+                *st3 = sty as u32;
+            }
+            let mut p = poff;
+            while p < poff + pcnt && (p as usize) < PORTS {
+                if p != 0 {
+                    port_st[p as usize] = sty;
+                }
+                p = p.saturating_add(1);
+            }
         }
         if next == 0 {
             break;
         }
-        off = next as u64 * 4;
+        off = off.saturating_add(next as u64);
         hops = hops.saturating_add(1);
     }
 }
 
-fn try_kbd(h: &mut Host, port: u32, speed: u32) -> bool {
-    let Some(slot) = enable_slot(h) else {
-        return false;
-    };
-    if !address_device(h, slot, port, speed) {
-        return false;
-    }
-    if !get_desc(h, slot, 1, 0, 18) {
-        return false;
-    }
-    if !get_desc(h, slot, 2, 0, 9) {
-        return false;
-    }
-    let total = unsafe {
-        let p = h.data as *const u8;
-        p.add(2).read() as u16 | ((p.add(3).read() as u16) << 8)
-    };
-    if total < 9 || total as usize > PAGE {
-        return false;
-    }
-    if !get_desc(h, slot, 2, 0, total) {
-        return false;
-    }
-    let Some((iface, ep, maxpkt, interval, cfg)) = parse_hid(h) else {
-        return false;
-    };
-    if !set_config(h, slot, cfg) {
-        return false;
-    }
-    let _ = hid_set(h, slot, iface, 0x0A, 0);
-    let _ = hid_set(h, slot, iface, 0x0B, 0);
-    if !config_intr(h, slot, port, speed, ep, maxpkt.max(8), interval) {
-        return false;
-    }
-    h.kbd_slot = slot;
-    h.kbd_prev = [0; 6];
-    let _ = h.intr.enq(h.report, 8, (TRB_NORMAL << 10) | IOC | ISP);
-    doorbell(h, slot as u32, h.kbd_dci as u32);
-    true
+fn empty_rings() -> [Ring; SLOTS] {
+    [Ring {
+        base: 0,
+        i: 0,
+        c: 1,
+    }; SLOTS]
 }
 
 fn bringup(bar: u64, len: u64) -> bool {
@@ -645,7 +954,10 @@ fn bringup(bar: u64, len: u64) -> bool {
     let ctxsz = if hcc1 & 4 != 0 { 64u32 } else { 32 };
     let ppc = hcc1 & 8 != 0;
     let xecp = (hcc1 >> 16) & 0xFFFF;
-    take_legacy(bar, xecp);
+    let mut port_st = [0u8; PORTS];
+    let mut st_usb2 = 0u32;
+    let mut st_usb3 = 0u32;
+    parse_caps(bar, xecp, &mut port_st, &mut st_usb2, &mut st_usb3);
     let op = bar + caplen;
     let rt = bar + rtsoff;
     let db = bar + dboff;
@@ -662,13 +974,12 @@ fn bringup(bar: u64, len: u64) -> bool {
     if !wait_eq(op + 4, CNR, 0) {
         return false;
     }
+    parse_caps(bar, xecp, &mut port_st, &mut st_usb2, &mut st_usb3);
     let dcbaa = page();
     let cmd_page = page();
     let evt_page = page();
     let erst = page();
     let in_ctx = page();
-    let out_ctx = page();
-    let ep0_page = page();
     let intr_page = page();
     let data = page();
     let report = page();
@@ -712,11 +1023,13 @@ fn bringup(bar: u64, len: u64) -> bool {
         },
         dcbaa,
         in_ctx,
-        out_ctx,
-        ep0: ring_new(ep0_page),
+        slot_ep0: empty_rings(),
         intr: ring_new(intr_page),
         data,
         report,
+        port_st,
+        st_usb2,
+        st_usb3,
         cmd_seen: false,
         cmd_code: 0,
         cmd_slot: 0,
@@ -726,16 +1039,22 @@ fn bringup(bar: u64, len: u64) -> bool {
         kbd_dci: 0,
         kbd_prev: [0; 6],
     };
+    power_ports(&h);
     let mut port = 1u32;
     while port <= h.max_ports {
         process_events(&mut h);
         if let Some(speed) = reset_port(&h, port) {
-            if try_kbd(&mut h, port, speed) {
-                *host_mut() = Some(h);
-                unsafe {
-                    core::ptr::addr_of_mut!(KBD).write(true);
+            let ty = slot_type_for(&h, speed, port);
+            if let Some(slot) = enable_slot(&mut h, ty) {
+                if address_device(&mut h, slot, port, speed, 0, 0, 0)
+                    && try_tree(&mut h, slot, port, speed, 0, 0, 0)
+                {
+                    *host_mut() = Some(h);
+                    unsafe {
+                        core::ptr::addr_of_mut!(KBD).write(true);
+                    }
+                    return true;
                 }
-                return true;
             }
         }
         port = port.saturating_add(1);
@@ -748,16 +1067,27 @@ pub fn init() {
     *host_mut() = None;
     unsafe {
         core::ptr::addr_of_mut!(KBD).write(false);
+        core::ptr::addr_of_mut!(FOUND).write(false);
     }
-    let mut found = [crate::pci::XhciBar { bar: 0, len: 0 }; 4];
-    let n = crate::pci::iter_xhci(&mut found);
+    let mut bars = [crate::pci::XhciBar { bar: 0, len: 0 }; 4];
+    let n = crate::pci::iter_xhci(&mut bars);
+    if n == 0 {
+        return;
+    }
+    unsafe {
+        core::ptr::addr_of_mut!(FOUND).write(true);
+    }
     let mut i = 0usize;
     while i < n {
-        if found[i].bar != 0 && bringup(found[i].bar, found[i].len) {
+        if bars[i].bar != 0 && bringup(bars[i].bar, bars[i].len) {
             return;
         }
         i += 1;
     }
+}
+
+pub fn found() -> bool {
+    unsafe { core::ptr::addr_of!(FOUND).read() }
 }
 
 pub fn kbd_live() -> bool {

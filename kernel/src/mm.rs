@@ -160,11 +160,15 @@ pub unsafe fn prepare_well(hint: Hint) -> Well {
     let mut drink = hint.kernel_end.max(0x40_0000);
     let need = PAGE * 8 + STACK_MANA;
     if drink >= ram_end || ram_end.saturating_sub(drink) < need {
-        // PE sits above the well cap (Insyde). Bump from 4 MiB, or after a
-        // low image that occupies that window.
+        // PE sits above the well cap (Insyde), or at the top of this bowl
+        // (OVMF + extra USB). Prefer 4 MiB; sit after a low image only
+        // when that still leaves a cup.
         drink = 0x40_0000;
         if img_lo != 0 && img_lo < ram_end && img_hi > drink {
-            drink = align_up(img_hi, PAGE);
+            let after = align_up(img_hi, PAGE);
+            if ram_end.saturating_sub(after) >= need {
+                drink = after;
+            }
         }
     }
     let need = drink + need;
@@ -733,12 +737,13 @@ fn probe_cap(cap: u64) -> u64 {
 
 /// Identity-map `phys..phys+len` as 2M uncacheable supervisor pages.
 /// GOP / MMIO lives outside the well; without this, `mov cr3` blinds the glass.
-/// Already-present RAM leaves are left alone. Empty PDPT slots get a fresh PD.
+/// Empty PDPT slots get a fresh PD. UC may replace a present 2M WB leaf (xHCI).
 pub fn map_uc(phys: u64, len: u64) {
     map_ident(phys, len, true);
 }
 
-/// Identity-map 2M pages. `uc` sets PCD+PWT (GOP). Already-present leaves stay.
+/// Identity-map 2M pages. `uc` sets PCD+PWT (GOP / xHCI). Present 2M leaves
+/// stay unless `uc` (a BAR may sit on a well 2M page).
 fn map_ident(phys: u64, len: u64, uc: bool) {
     if phys == 0 || len == 0 {
         return;
@@ -795,6 +800,9 @@ fn map_ident(phys: u64, len: u64, uc: bool) {
             let slot = (pd as *mut u64).add(pdi);
             let e = slot.read_volatile();
             if e & P == 0 {
+                slot.write_volatile(va | flags);
+            } else if uc && e & PS != 0 {
+                // MMIO (xHCI) may land on a WB 2M RAM leaf. GOP already UC stays UC.
                 slot.write_volatile(va | flags);
             }
             va += BIG;

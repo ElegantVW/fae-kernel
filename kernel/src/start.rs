@@ -189,13 +189,21 @@ unsafe extern "C" fn after_cup() -> ! {
         let msg = b"well\n";
         crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
         crate::usb::init();
-        if crate::usb::kbd_live() {
-            serial_print("kindling: usb kbd\n");
-            let msg = b"usb kbd\n";
+        if crate::usb::found() {
+            let msg = b"xhci\n";
             crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
+            if crate::usb::kbd_live() {
+                serial_print("kindling: usb kbd\n");
+                let msg = b"usb kbd\n";
+                crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
+            } else {
+                serial_print("kindling: no usb\n");
+                let msg = b"no usb\n";
+                crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
+            }
         } else {
-            serial_print("kindling: no usb\n");
-            let msg = b"no usb\n";
+            serial_print("kindling: no xhci\n");
+            let msg = b"no xhci\n";
             crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
         }
         if !crate::kbd::live() && !crate::usb::kbd_live() {

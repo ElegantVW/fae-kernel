@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## usb-hub-g27b (2026-10-06)
+
+- Iron G27 printed `no usb` then `ingle`. QEMU hid it: `qemu-xhci` has no PPC and the kbd sits on a root port. Intel wants PP on every port before CCS, Enable Slot type from Supported Protocol (xECP **Next** is a DWORD offset from this cap, not the BAR), and the IdeaPad keys often hang behind one USB2 hub. Glass now says `xhci` then `usb kbd` or `no usb` (`no xhci` if PCI missed). `map_uc` may replace a present WB 2M leaf. HID match is class 3 proto 1. OVMF + hub can park the PE at the top of a 256M bowl; the bump stays at 4 MiB when after-image has no cup. `make below` += efi-usb-hub (`usb-hub` on `xhci.0` port 1, `usb-kbd` on `1.1`).
+
 ## usb-hid-g27 (2026-10-06)
 
 - Iron G26 showed `ingle` waiting; the IdeaPad keyboard is USB. House `read` now polls xHCI as well as the 8042. PCI CF8 finds class `0x0C0330`, maps the BAR UC, takes USBLEGSUP, halt/reset/run, addresses a HID boot keyboard, `SET_PROTOCOL` 0. Reports become ASCII on the same queue. Serial `kindling: xhci 0xBAR` and `kindling: usb kbd` (or `no usb`). `make below` += efi-usb (`qemu-xhci` + `usb-kbd`; must print `usb kbd` before `sendkey`). 8042 `efi-ingle` stays.

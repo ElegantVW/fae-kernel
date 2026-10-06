@@ -71,8 +71,10 @@ cairn skips the `cairn` line; Grove still paints, then the glass says
 `kindling` (from `show`) and `no ingle`. After the well, `ingle` runs when
 the cairn planted. The well maps the PE and GOP before `mov cr3` so a
 high Insyde load does not freeze the pre-EBS picture. After the well,
-xHCI is taken (USBLEGSUP, halt, reset, run); a HID boot keyboard
-prints `usb kbd` on the glass and feeds house `read`. Miss is `no usb`.
+xHCI is taken (USBLEGSUP, halt, reset, run); glass names the step:
+`xhci`, then `usb kbd` when a HID boot keyboard is queued (root port
+or one hub hop). Miss is `no xhci` (no PCI class `0x0C0330`) or
+`xhci` then `no usb` (HC ran, no keyboard).
 
 ConOut (the laptop panel) carries `cerne-efi`, the Grove sigil, `image` /
 `cairn` / `gop` / `exit`. COM1 carries `fae-kernel` and the well line. OVMF

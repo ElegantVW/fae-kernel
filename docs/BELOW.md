@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → loader (off the disk) → Kindling spark. House light (G15–G27) is on.
+Firmware → loader (off the disk) → Kindling spark. House light (G15–G27b) is on.
 Linux ELF waits on its own gate. This file staying green is still the law.
 
 Run: `make below`  
@@ -39,9 +39,10 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G25c | Iron ingle wait — poll 8042; `hlt` only with PIT; glass cursor + `kindling` | efi-ingle sendkey still greets | yes |
 | G26 | Post-well glass — map PE+GOP before CR3; `kindling` on show(); efi-glass + stick | efi-glass `xp`; stick `cmp` | yes |
 | G27 | USB HID boot keyboard — xHCI poll into house `read`; 8042 stays | efi-usb `usb kbd` then sendkey; efi-ingle still greets | yes |
+| G27b | Iron xHCI — PPC, protocol slot type, one hub hop; glass `xhci` / `usb kbd` / `no usb` | efi-usb root kbd; efi-usb-hub one hop; efi-ingle still greets | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 
 House calls (Gleam-only, not Linux): `docs/HOUSECALLS.md`. First set: `yield` / `exit` / `write(fd 1-2)` / `read(fd 0)` / `sleep` / `time` / `glean` / `stow` / `spawn` + shut `grant` / `flush` (`-EAGAIN`). `write` also paints the glass (VGA / GOP). Happy serial unchanged; `house-test` image prints `kindling: house ok`; `spawn-test` prints `kindling: spawn ok` then the second-leaf. After the well the glass shows the Grove glyph + title. EFI prints Grove on ConOut before touching GOP (IdeaPad has no COM1; Insyde hung inside GOP open).
 
-Out of gate: storage beyond boot reads (writes, filesystems), SMP APs, LA57 well, trap recover, UHCI/EHCI/MSC/mice (xHCI HID boot keyboard is in-gate; 8042 poll stays).
+Out of gate: storage beyond boot reads (writes, filesystems), SMP APs, LA57 well, trap recover, UHCI/EHCI/MSC/mice, deep hubs (xHCI HID boot keyboard, one hub hop, is in-gate; 8042 poll stays).
