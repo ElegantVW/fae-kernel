@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## usb-msc-g29c (2026-10-06)
+
+- Iron G29b printed `no dev` after a minute at `well`. CCS was seen, GET_DESCRIPTOR never was: failed PORTSC resets retried with 4 million uncached MMIO polls, and USBLEGSUP/PP/HCRST used the same spin. Waits are milliseconds on the G28 clock (20–100 ms). One reset try per port; a second scan 100 ms later catches a late stick. Dead BAR (`0xFFFFFFFF`, caplen>0x80) is refused. PCI CF8 walks buses 0..=15. CAS gets a warm reset. EP0 starts at 8 for FS/LS, then Evaluate. IMAN IE at runtime 0x20. Glass still `no ccs` / `no dev` / `no bot` / `no cap` / `msc`.
+
 ## usb-msc-g29b (2026-10-06)
 
 - Iron G29 printed `no msc` (and `no usb`): bringup never kept a host. QEMU hid it — devices CCS immediately. After HCRST the IdeaPad camera/BT can CCS first; `power_ports` returned on that and the side-port Databar (USB2 HS, BOT 8/6/50) was still reconnecting. Settle 150 ms on the G28 clock, then rescan (100 ms × 4) so a late CCS is seen. USB3 ports warm-reset when !PED. 10 ms reset recovery before Address/GET_DESCRIPTOR. Glass names the miss: `no ccs` / `no dev` / `no bot` / `no cap` / `msc`. Empty Thunderbolt xHCI bails after one extra settle.

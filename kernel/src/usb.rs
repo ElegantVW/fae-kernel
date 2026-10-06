@@ -52,6 +52,12 @@ const PORT_CHG: u32 = CSC | PEC | WRC | OCC | PRC | PLC | CEC;
 
 const CC_OK: u32 = 1;
 const CC_SHORT: u32 = 13;
+const CAS: u32 = 1 << 24;
+
+const T_SHORT: u64 = 20;
+const T_PORT: u64 = 50;
+const T_CMD: u64 = 100;
+const T_RST: u64 = 100;
 
 const FEAT_PORT_RESET: u16 = 4;
 const FEAT_PORT_POWER: u16 = 8;
@@ -166,10 +172,20 @@ fn page() -> u64 {
     p
 }
 
-fn wait_eq(addr: u64, mask: u32, want: u32) -> bool {
+fn wait_loop(timeout_ms: u64, mut ok: impl FnMut() -> bool) -> bool {
+    if crate::timer::clock_live() {
+        let t0 = crate::timer::ms();
+        while crate::timer::ms().saturating_sub(t0) < timeout_ms {
+            if ok() {
+                return true;
+            }
+            core::hint::spin_loop();
+        }
+        return false;
+    }
     let mut n = 0u32;
     while n < SPINS {
-        if r32(addr) & mask == want {
+        if ok() {
             return true;
         }
         n = n.saturating_add(1);
@@ -178,16 +194,12 @@ fn wait_eq(addr: u64, mask: u32, want: u32) -> bool {
     false
 }
 
-fn wait_set(addr: u64, mask: u32) -> bool {
-    let mut n = 0u32;
-    while n < SPINS {
-        if r32(addr) & mask != 0 {
-            return true;
-        }
-        n = n.saturating_add(1);
-        core::hint::spin_loop();
-    }
-    false
+fn wait_eq(addr: u64, mask: u32, want: u32, timeout_ms: u64) -> bool {
+    wait_loop(timeout_ms, || r32(addr) & mask == want)
+}
+
+fn wait_set(addr: u64, mask: u32, timeout_ms: u64) -> bool {
+    wait_loop(timeout_ms, || r32(addr) & mask != 0)
 }
 
 fn pause() {
@@ -375,16 +387,10 @@ fn command(h: &mut Host, param: u64, status: u32, ctrl: u32) -> bool {
     h.cmd_seen = false;
     let _ = h.cmd.enq(param, status, ctrl);
     doorbell(h, 0, 0);
-    let mut n = 0u32;
-    while n < SPINS {
+    wait_loop(T_CMD, || {
         process_events(h);
-        if h.cmd_seen {
-            return h.cmd_code == CC_OK;
-        }
-        n = n.saturating_add(1);
-        core::hint::spin_loop();
-    }
-    false
+        h.cmd_seen
+    }) && h.cmd_code == CC_OK
 }
 
 fn slot_type_for(h: &Host, speed: u32, root_port: u32) -> u32 {
@@ -402,14 +408,24 @@ fn slot_type_for(h: &Host, speed: u32, root_port: u32) -> u32 {
 }
 
 fn enable_slot(h: &mut Host, ty: u32) -> Option<u8> {
-    if !command(h, 0, 0, (TRB_ENABLE_SLOT << 10) | (ty << 16)) {
-        return None;
+    let try_ty = |h: &mut Host, ty: u32| -> Option<u8> {
+        if !command(h, 0, 0, (TRB_ENABLE_SLOT << 10) | (ty << 16)) {
+            return None;
+        }
+        let s = h.cmd_slot as u8;
+        if s == 0 || (s as usize) >= SLOTS {
+            None
+        } else {
+            Some(s)
+        }
+    };
+    if let Some(s) = try_ty(h, ty) {
+        return Some(s);
     }
-    let s = h.cmd_slot as u8;
-    if s == 0 || (s as usize) >= SLOTS {
-        None
+    if ty != 0 {
+        try_ty(h, 0)
     } else {
-        Some(s)
+        None
     }
 }
 
@@ -445,10 +461,12 @@ fn address_device(
     w32(h.in_ctx + 4, 0b11);
     fill_slot_ctx(h, speed, root_port, route, tt_slot, tt_port, 1);
     let ep0 = h.in_ctx + 2 * cs;
-    let mps: u32 = match speed {
-        2 => 8,
-        4 | 5 => 512,
-        _ => 64,
+    let mps: u32 = if speed >= 4 {
+        512
+    } else if speed == 3 {
+        64
+    } else {
+        8
     };
     w32(ep0 + 4, (mps << 16) | (4 << 3) | (3 << 1));
     let ring = h.slot_ep0[slot as usize];
@@ -458,6 +476,35 @@ fn address_device(
         h.in_ctx,
         0,
         (TRB_ADDRESS << 10) | ((slot as u32) << 24),
+    )
+}
+
+fn evaluate_ep0(
+    h: &mut Host,
+    slot: u8,
+    root_port: u32,
+    speed: u32,
+    route: u32,
+    tt_slot: u32,
+    tt_port: u32,
+    mps: u32,
+) -> bool {
+    unsafe {
+        core::ptr::write_bytes(h.in_ctx as *mut u8, 0, PAGE);
+    }
+    let cs = h.ctxsz as u64;
+    w32(h.in_ctx + 4, 0b11);
+    fill_slot_ctx(h, speed, root_port, route, tt_slot, tt_port, 1);
+    let ep0 = h.in_ctx + 2 * cs;
+    w32(ep0 + 4, (mps << 16) | (4 << 3) | (3 << 1));
+    let ring = h.slot_ep0[slot as usize];
+    let deq = ring.base + ring.i as u64 * 16;
+    w64(ep0 + 8, deq | ring.c as u64);
+    command(
+        h,
+        h.in_ctx,
+        0,
+        (TRB_EVAL << 10) | ((slot as u32) << 24),
     )
 }
 
@@ -483,16 +530,10 @@ fn control(h: &mut Host, slot: u8, setup: [u8; 8], buf: u64, len: u16, din: bool
 }
 
 fn wait_xfer(h: &mut Host) -> bool {
-    let mut n = 0u32;
-    while n < SPINS {
+    wait_loop(T_CMD, || {
         process_events(h);
-        if h.xfer_seen {
-            return h.xfer_code == CC_OK || h.xfer_code == CC_SHORT;
-        }
-        n = n.saturating_add(1);
-        core::hint::spin_loop();
-    }
-    false
+        h.xfer_seen
+    }) && (h.xfer_code == CC_OK || h.xfer_code == CC_SHORT)
 }
 
 fn get_desc(h: &mut Host, slot: u8, ty: u8, idx: u8, len: u16) -> bool {
@@ -1110,6 +1151,14 @@ fn try_tree(
     tt_slot: u32,
     tt_port: u32,
 ) -> bool {
+    if !get_desc(h, slot, 1, 0, 8) {
+        return false;
+    }
+    if speed < 3 {
+        let bmax = r8(h.data + 7) as u32;
+        let mps = if bmax == 0 { 8 } else { bmax };
+        let _ = evaluate_ep0(h, slot, root_port, speed, route, tt_slot, tt_port, mps);
+    }
     if !get_desc(h, slot, 1, 0, 18) {
         return false;
     }
@@ -1145,7 +1194,7 @@ fn power_ports(h: &mut Host) {
     }
     let mut port = 1u32;
     while port <= h.max_ports {
-        let _ = wait_set(portsc(h.op, port), PP);
+        let _ = wait_set(portsc(h.op, port), PP, T_SHORT);
         port = port.saturating_add(1);
     }
     process_events(h);
@@ -1161,22 +1210,22 @@ fn reset_port(h: &Host, port: u32) -> Option<u32> {
     let ss_port = (port as usize) < PORTS
         && h.st_usb3 != 0
         && h.port_st[port as usize] == h.st_usb3 as u8;
-    if v & PED == 0 && ss_port {
+    if v & CAS != 0 || (v & PED == 0 && ss_port) {
         w32(a, r32(a) | WPR | PORT_CHG);
-        if !wait_set(a, WRC) {
+        if !wait_set(a, WRC, T_PORT) {
             return None;
         }
     } else {
         w32(a, r32(a) | PR | PORT_CHG);
-        if !wait_set(a, PRC) {
+        if !wait_set(a, PRC, T_PORT) {
             w32(a, r32(a) | WPR | PORT_CHG);
-            if !wait_set(a, WRC) {
+            if !wait_set(a, WRC, T_PORT) {
                 return None;
             }
         }
     }
     w32(a, r32(a) | PORT_CHG);
-    if !wait_set(a, PED) {
+    if !wait_set(a, PED, T_PORT) {
         return None;
     }
     let speed = (r32(a) >> 10) & 0xF;
@@ -1199,8 +1248,8 @@ fn scan_root(h: &mut Host, tried: &mut [bool; PORTS]) {
             port = port.saturating_add(1);
             continue;
         }
+        tried[port as usize] = true;
         if let Some(speed) = reset_port(h, port) {
-            tried[port as usize] = true;
             recover();
             let ty = slot_type_for(h, speed, port);
             if let Some(slot) = enable_slot(h, ty) {
@@ -1231,14 +1280,7 @@ fn parse_caps(bar: u64, xecp: u32, port_st: &mut [u8; PORTS], st2: &mut u32, st3
         let major = (cap >> 24) & 0xFF;
         if id == 1 {
             w32(bar + off * 4, cap | (1 << 24));
-            let mut n = 0u32;
-            while n < SPINS {
-                if r32(bar + off * 4) & (1 << 16) == 0 {
-                    break;
-                }
-                n = n.saturating_add(1);
-                core::hint::spin_loop();
-            }
+            let _ = wait_eq(bar + off * 4, 1 << 16, 0, T_PORT);
             w32(bar + off * 4 + 4, 0);
         } else if id == 2 {
             let d2 = r32(bar + off * 4 + 8);
@@ -1283,8 +1325,11 @@ fn bringup(bar: u64, len: u64) -> bool {
     serial_print("kindling: xhci 0x");
     serial_hex(bar);
     serial_print("\n");
+    if r32(bar) == 0xFFFF_FFFF {
+        return false;
+    }
     let caplen = r8(bar) as u64;
-    if caplen < 0x20 {
+    if caplen < 0x20 || caplen > 0x80 {
         return false;
     }
     let hcs1 = r32(bar + 4);
@@ -1292,12 +1337,12 @@ fn bringup(bar: u64, len: u64) -> bool {
     let hcc1 = r32(bar + 0x10);
     let dboff = r32(bar + 0x14) as u64;
     let rtsoff = r32(bar + 0x18) as u64;
-    if dboff == 0 || rtsoff == 0 {
+    if dboff == 0 || rtsoff == 0 || dboff > len || rtsoff > len {
         return false;
     }
     let max_slots = (hcs1 & 0xFF).min(16);
-    let max_ports = (hcs1 >> 24) & 0xFF;
-    if max_ports == 0 {
+    let max_ports = ((hcs1 >> 24) & 0xFF).min((PORTS as u32) - 1);
+    if max_ports == 0 || hcs1 == 0xFFFF_FFFF {
         return false;
     }
     let scratch = ((hcs2 >> 27) & 0x1F) | (((hcs2 >> 21) & 0x1F) << 5);
@@ -1313,15 +1358,15 @@ fn bringup(bar: u64, len: u64) -> bool {
     let db = bar + dboff;
     if r32(op) & RS != 0 {
         w32(op, r32(op) & !RS);
-        if !wait_eq(op + 4, HCH, HCH) {
+        if !wait_eq(op + 4, HCH, HCH, T_RST) {
             return false;
         }
     }
     w32(op, HCRST);
-    if !wait_eq(op, HCRST, 0) {
+    if !wait_eq(op, HCRST, 0, T_RST) {
         return false;
     }
-    if !wait_eq(op + 4, CNR, 0) {
+    if !wait_eq(op + 4, CNR, 0, T_RST) {
         return false;
     }
     parse_caps(bar, xecp, &mut port_st, &mut st_usb2, &mut st_usb3);
@@ -1353,11 +1398,12 @@ fn bringup(bar: u64, len: u64) -> bool {
     w32(erst + 4, (evt_page >> 32) as u32);
     w32(erst + 8, RING);
     w32(erst + 12, 0);
+    w32(rt + 0x20, 2);
     w32(rt + 0x28, 1);
     w64(rt + 0x30, erst);
     w64(rt + 0x38, evt_page);
     w32(op, RS);
-    if !wait_eq(op + 4, HCH, 0) {
+    if !wait_eq(op + 4, HCH, 0, T_RST) {
         return false;
     }
     let mut h = Host {
@@ -1398,19 +1444,12 @@ fn bringup(bar: u64, len: u64) -> bool {
         msc_tag: 1,
     };
     power_ports(&mut h);
-    settle(&mut h, 150);
+    settle(&mut h, 100);
     let mut tried = [false; PORTS];
     scan_root(&mut h, &mut tried);
-    let mut round = 0u32;
-    while h.msc_slot == 0 && round < 4 {
-        unsafe {
-            if core::ptr::addr_of!(MISS).read() < M_CCS && round >= 1 {
-                break;
-            }
-        }
+    if h.msc_slot == 0 {
         settle(&mut h, 100);
         scan_root(&mut h, &mut tried);
-        round = round.saturating_add(1);
     }
     if h.kbd_slot == 0 && h.msc_slot == 0 {
         return false;

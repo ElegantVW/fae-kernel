@@ -112,6 +112,7 @@ fn enable_mem_master(bus: u8, dev: u8, fun: u8) {
 }
 
 /// Fill `out` with xHCI MMIO windows. Returns how many were stored.
+/// Buses 0..=15 only — a full 0..=255 CF8 walk can sit a minute on iron.
 pub fn iter_xhci(out: &mut [XhciBar]) -> usize {
     let mut n = 0usize;
     if out.is_empty() {
@@ -148,7 +149,7 @@ pub fn iter_xhci(out: &mut [XhciBar]) -> usize {
             }
             dev = dev.saturating_add(1);
         }
-        if bus == 255 {
+        if bus == 15 {
             break;
         }
         bus = bus.saturating_add(1);
