@@ -82,6 +82,7 @@ Do not propose these as new creature names. They are already working.
 | ember | G30 test spark: the live coal that stays while the wick burns. OE *æmerge*. Not Gleed (signer), not Hearth (QEMU + suite greeter) |
 | splanc | G31 test spark that does not catch. Irish *splanc* / flint-fire. `ud2`. Not Flint (signer) |
 | leaf | G33 spark: gleans `LEAF`, writes the page, reads until `q`. The Grove's leaves; not a signer |
+| ingle | G24 greeter spark, G34 desktop: kindles `leaf`, writes `the light remains`, waits for `q`. Scots fireplace. Not Hearth |
 | Seal, Rift, Goblin, Siren, Imp, Magpie, Ether, Scry, Spellbook, Scroll | Suite apps |
 | Aegis, Bulwark, Imbue, Menagerie, Fairy Lantern | Suite / engines |
 | Alchemy, Grimoire, Abacus, Quests, Hourglass, Almanac, Eye, Vault, Reflection, Tome, Zen, Tick, Summon, Purity, Sentinel, Ward | Suite |
@@ -104,7 +105,7 @@ Etymology of the chosen name, verified: English *kindling* is the verbal noun of
 |---|---|---|---|---|
 | **Gleed** | Live coal; glowing ember | OE *glēd*; Scots *gleid*. Cognate Dutch *gloed*, German *Glut*, ON *glóð* | The coal that *stays* after Kindling catches. Persistence, not first spark | Low. Archaic English; Tolkien used *gledes* in *The Hobbit* (public-domain word, not a character) |
 | **Aithinne** | Firebrand; spark | Irish, from Old Irish *aithinne* (Ó Dónaill; Wiktionary) | Brand you carry to light the next hearth. Fits ‘still only a spark’ | Low. Pronounce roughly *AH-hin-yeh*. Not in the suite |
-| **Ingle** | Fire on the hearth; fireplace | Scots / northern English; compared in dialect lists with Gaelic *aingeal* ‘fire, lighted coal’ (that *aingeal* also means ‘angel’ — different word) | The fire *in* the house, not the greeter named Hearth | Medium: sits next to Hearth. Fine as firmware/comment, noisy as a signer |
+| **Ingle** | Fire on the hearth; fireplace | Scots / northern English; compared in dialect lists with Gaelic *aingeal* ‘fire, lighted coal’ (that *aingeal* also means ‘angel’ — different word) | The fire *in* the house, not the greeter named Hearth | **Taken — spark** (G24 greeter, G34 desktop). Sits next to Hearth |
 | **Lasair** | A single tongue of flame | Irish | One flame, not the whole blaze — same scale as Kindling | Low |
 | **Splanc** | Spark knocked from stone | Irish (*splanc* / *tine chreasa* ‘flint-fire’) | The spark Flint strikes. **Struck as a spark** (G31): `ud2`, does not catch | Taken — spark. Medium vs Flint (same moment in the fire triangle) |
 | **Teine** | Fire | Scottish Gaelic; Irish *tine*; Manx *çhenney*. Proto-Celtic *teɸnets* | The element itself. Too big for the kernel (Kindling is the *small* wood) | Medium: generic; also *teine sìth* ‘fairy fire’ = will-o’-the-wisp, near Wisp |
@@ -168,7 +169,7 @@ Fire triangle in this house: Flint (spark) + Steel (striker) + Tinder (catch) + 
 | **Steel** | *firesteel*, *striker*, *fusil* | Firesteel = high-carbon steel kept in the tinderbox. OF *fuisil* ‘steel for striking fire’ (etymonline *fusilier*) | The thing that *makes* flint speak | **Steel is taken.** Fusil is obscure and also a musket |
 | **Tinder** | *amadou*, *touchwood*, *spunk* / Irish *sponc*, *char*, *fomes*, *punk* | OE *tynder* from *tendan* ‘kindle’. Joyce: Irish *sponc* from Latin *spongia*. Amadou = prepared bracket fungus | What actually *catches* | **Tinder is taken.** *Spunk* / *punk* are slang in modern English — do not use as signers |
 | **Breath** | *awel* (Welsh breeze), *anáil* (Irish breath), *gwynt* (Welsh wind), *draw* | Air on the coal. Serial as breath is already house law | Liveness: no breath, the spark dies | **Breath is taken.** Awel is a pretty cousin for comments |
-| **Hearth** | *ingle*, *tula* (Gaelic hearth in the Brigit kindling prayer, via modern practice pages), *grate* | The bowl we dare to burn in is QEMU; the suite Hearth is auth | Two hearths already. Do not add a third creature named Hearth | **Hearth is taken twice.** Ingle is the cousin |
+| **Hearth** | *ingle*, *tula* (Gaelic hearth in the Brigit kindling prayer, via modern practice pages), *grate* | The bowl we dare to burn in is QEMU; the suite Hearth is auth | Two hearths already. Do not add a third creature named Hearth | **Hearth is taken twice.** Ingle is the greeter spark |
 | **Bellows** | *draw*, *blast*, *Blow George* (English firelighting implement, Wikipedia glossary) | Make itself — air in rhythm | Keep Bellows = `make` | **Bellows is taken.** Blow George is too silly and too English-tool-brand |
 
 Folk colour (not new *make* names): Irish *tine chreasa* is fire struck from flint carried at the girdle (*crios*). Gaelic morning prayer *togail an teine* is kindling the fire; night *smooring* banks it. Those verbs belong under **casting** (boot / halt), not as tool creatures.

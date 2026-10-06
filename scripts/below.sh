@@ -251,6 +251,20 @@ make steel >/dev/null
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
   --kernel kernel/kernel.fw.bin --out kindling.img
 
+echo "---- ingle-leaf ----"
+nasm -f bin -o spark/ingle.bin spark/ingle.asm
+nasm -f bin -o spark/leaf.bin spark/leaf.asm
+make -C kernel ingle-bin
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.ingle.bin --out kindling-ingle-leaf.img \
+  --spark ingle=spark/ingle.bin --spark leaf=spark/leaf.bin \
+  --leaf LEAF=spark/LEAF.txt
+python3 scripts/check-ingle-leaf.py
+# restore the paved kernel for later steps
+make steel >/dev/null
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling.img
+
 echo "---- leaf ----"
 nasm -f bin -o spark/leaf.bin spark/leaf.asm
 make -C kernel leaf-bin
@@ -386,6 +400,15 @@ python3 scripts/check-efi-sleep.py
 
 echo "---- efi-glass ----"
 python3 scripts/check-efi-glass.py
+
+echo "---- paved cairn ----"
+nasm -f bin -o spark/ingle.bin spark/ingle.asm
+nasm -f bin -o spark/leaf.bin spark/leaf.asm
+make steel >/dev/null
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling.img \
+  --spark ingle=spark/ingle.bin --spark leaf=spark/leaf.bin \
+  --leaf LEAF=spark/LEAF.txt --cairn-out spark/cairn.bin
 
 echo "---- stick ----"
 sh scripts/check-stick.sh

@@ -24,7 +24,7 @@ help:
 	@echo "  make flint     nasm the firmware (the striker)"
 	@echo "  make steel     cargo-cast the kernel crystal"
 	@echo "  make tinder    firmware ROM that catches"
-	@echo "  make image     cast the boot disk (KMAP + loader + kernel + ingle)"
+	@echo "  make image     cast the boot disk (KMAP + loader + kernel + ingle + leaf)"
 	@echo "  make hearth    QEMU bowl (alias: serial-fw)"
 	@echo "  make kindle    flint + steel + hearth — paved fire"
 	@echo "  make hearth-see   same fire, window (lilac VGA)"
@@ -46,10 +46,12 @@ tinder: flint
 hearth: serial-fw
 kindle: serial-fw
 image: $(IMAGE)
-$(IMAGE): flint steel $(LD_BIN) scripts/mkimg.py spark/ingle.asm
+$(IMAGE): flint steel $(LD_BIN) scripts/mkimg.py spark/ingle.asm spark/leaf.asm spark/LEAF.txt
 	$(NASM) -f bin -o spark/ingle.bin spark/ingle.asm
+	$(NASM) -f bin -o spark/leaf.bin spark/leaf.asm
 	python3 scripts/mkimg.py --loader $(LD_BIN) --kernel kernel/kernel.fw.bin \
-		--spark ingle=spark/ingle.bin --out $@ --cairn-out spark/cairn.bin
+		--spark ingle=spark/ingle.bin --spark leaf=spark/leaf.bin \
+		--leaf LEAF=spark/LEAF.txt --out $@ --cairn-out spark/cairn.bin
 
 $(LD_BIN): ld/cerne-ld.asm
 	$(NASM) -f bin -o $@ $<
@@ -68,6 +70,7 @@ test:
 	sh scripts/test-vm.sh spawn
 	sh scripts/test-vm.sh splanc
 	sh scripts/test-vm.sh ingle
+	sh scripts/test-vm.sh ingle-leaf
 	sh scripts/test-vm.sh leaf
 	python3 scripts/check-grove.py
 	$(MAKE) efi

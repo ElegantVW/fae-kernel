@@ -127,5 +127,5 @@ is the design working.
 - **ember** — the live coal (G30): kindles `wick`, writes `stayed`, exits with wick's last word. Packed on the spawn-test image. G31: kindles `splanc` when that spark is packed; spawn refuses, ember exits 1.
 - **splanc** — a spark that does not catch (G31). Irish *splanc*. `ud2`; the house names the miss.
 - **second-leaf** — `the cup is its own`.
-- **ingle** — the greeter spark: writes its name, reads a line, says the fire is lit. Packed on `make image`; EFI copies it from `EFI/BOOT/CAIRN`.
-- **LEAF** — G32/G33 proof leaf. Page `the volume speaks`. Cairn on the BIOS leaf image; FAT root on QEMU efi-msc / efi-leaf.
+- **ingle** — the greeter spark, the desktop (G34). Writes its name, reads a line, says the fire is lit, kindles `leaf` once, writes `the light remains` when that spark smoors, waits for `q`. Packed on `make image` with `leaf` and `LEAF`; EFI copies the blob from `EFI/BOOT/CAIRN`. A miss of `leaf` is quiet.
+- **LEAF** — G32/G33 proof leaf. Page `the volume speaks`. Cairn on the paved / BIOS leaf image; FAT root on QEMU efi-msc / efi-leaf / the Databar.

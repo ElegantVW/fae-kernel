@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → loader (off the disk) → Kindling spark. House light (G15–G33) is on.
+Firmware → loader (off the disk) → Kindling spark. House light (G15–G34) is on.
 Linux ELF waits on its own gate. This file staying green is still the law.
 
 Run: `make below`  
@@ -53,9 +53,10 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G31 | The spark went out — guest `#UD` smoors; Light's spawn refuses | splanc in `make below`: `trap 6`, `the spark went out`, `gleam exit 1` | yes |
 | G32 | Glean a leaf from the volume — cairn first, then FAT root by Gleam name | efi-msc FAT32 + `LEAF`; serial `the volume speaks` | yes |
 | G33 | Spark `leaf` — gleans `LEAF`, writes the page, reads until `q` | leaf in `make below`; efi-leaf HID `q` then `gleam exit 0` | yes |
+| G34 | Ingle keeps the Light — kindles `leaf`, `the light remains`, glass last word | ingle-leaf in `make below`; ingle tests send **q** | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 
-House calls (Gleam-only, not Linux): `docs/HOUSECALLS.md`. First set: `yield` / `exit` / `write(fd 1-2)` / `read(fd 0)` / `sleep` / `time` / `glean` / `stow` / `spawn` + shut `grant` / `flush` (`-EAGAIN`). `glean` takes the cairn first, then a live FAT volume's root by Gleam name. Spark `leaf` tells that page and waits for `q`. `write` also paints the glass (VGA / GOP). Happy serial unchanged; `house-test` image prints `kindling: house ok`; `spawn-test` prints `kindling: spawn ok`, the second-leaf, then `stayed`. Guest `#UD`/`#PF`/`#GP` print `kindling: trap N` and `the spark went out`; with a Light, `spawn` returns `-EIO`. After the well the glass shows the Grove glyph + title. EFI prints Grove on ConOut before touching GOP (IdeaPad has no COM1; Insyde hung inside GOP open).
+House calls (Gleam-only, not Linux): `docs/HOUSECALLS.md`. First set: `yield` / `exit` / `write(fd 1-2)` / `read(fd 0)` / `sleep` / `time` / `glean` / `stow` / `spawn` + shut `grant` / `flush` (`-EAGAIN`). `glean` takes the cairn first, then a live FAT volume's root by Gleam name. Spark `leaf` tells that page and waits for `q`. Paved `ingle` kindles that spark after the fire is lit and writes `the light remains` when it smoors. No-Light `exit` paints serial and the glass `kindling: gleam exit N`. `write` also paints the glass (VGA / GOP). Happy serial unchanged; `house-test` image prints `kindling: house ok`; `spawn-test` prints `kindling: spawn ok`, the second-leaf, then `stayed`. Guest `#UD`/`#PF`/`#GP` print `kindling: trap N` and `the spark went out`; with a Light, `spawn` returns `-EIO`. After the well the glass shows the Grove glyph + title. EFI prints Grove on ConOut before touching GOP (IdeaPad has no COM1; Insyde hung inside GOP open).
 
 Out of gate: storage writes (WRITE(10), stow-via-MSC, KINDLOG), SMP APs, LA57 well, resume at a fault RIP, UHCI/EHCI/mice, deep hubs (xHCI HID boot keyboard, one hub hop, BOT MSC READ CAPACITY, READ(10) of a FAT boot sector, and `glean` of a named leaf from the volume root are in-gate; 8042 poll stays). Guest traps smoor into the Light (G31); ring-0 traps stay fatal.

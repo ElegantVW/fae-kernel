@@ -20,7 +20,7 @@ Swift, purposeful, direct — no noise. Unknown refuses, never silently succeeds
 | # | Name | Args | Returns | Today |
 |---|---|---|---|---|
 | 0 | `yield` | — | `0` | done (co-op stub) |
-| 1 | `exit` | `rdi` = code | never | done: smoors into the Light (the Light's `spawn` receives this last word in `rax`); with no Light, `kindling: gleam exit N` + `hlt` |
+| 1 | `exit` | `rdi` = code | never | done: smoors into the Light (the Light's `spawn` receives this last word in `rax`); with no Light, serial **and glass** `kindling: gleam exit N` + `hlt` |
 | 2 | `write` | `rdi` = fd, `rsi` = buf, `rdx` = len | bytes or `-errno` | done on fd 1/2 serial **and** the glass (VGA text / GOP blit); other fd → `-EPERM`; len capped 1 MiB; null buf → `-EPERM` |
 | 3 | `sleep` | `rdi` = ms | `0` | done: TSC deadline after the well (HPET or polled PIT). BIOS may `hlt` on IRQ0. Dead clock returns at once (`no tick`) |
 | 4 | `time` | — | ms | done: milliseconds from calibrated TSC when the clock is live; PIT ticks if TSC never armed; raw `rdtsc` only when both are dark |
@@ -61,7 +61,9 @@ private CR3: `kindling: spawn ok`, ember kindles `wick`, the second-leaf,
 `ud2`: `kindling: trap 6`, `the spark went out`, `gleam exit 1` — `stayed`
 is a lie.
 Feature `ingle-test` looses `ingle`: `kindling: ingle ok`, the spark writes
-`ingle`, `read` waits, Enter yields `the fire is lit` then `gleam exit 0`.
+`ingle`, `read` waits, Enter yields `the fire is lit`, then `ingle` kindles
+`leaf` once (a miss is quiet). A last word ≥ 0 writes `the light remains`.
+`read` until `q`, then `gleam exit 0`.
 Feature `leaf-test` looses `leaf`: `kindling: leaf ok`, the spark gleans
 `LEAF`, writes the page, `read` waits for `q`, then `gleam exit 0`.
 Happy path (no `*-test` feature) lights `ingle` when the cairn has it

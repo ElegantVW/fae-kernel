@@ -101,13 +101,18 @@ def main() -> int:
             return 1
         sock.sendall(b"sendkey ret\n")
         read_until(sock, "(qemu)", 2)
-        sock.close()
         serial = serial_has("the fire is lit", 4)
         t = serial.replace("\r", "")
         if "the fire is lit" not in t:
             print("FAIL ingle (no greeting)")
             print(serial[-400:])
+            sock.close()
             return 1
+        sock.sendall(b"sendkey q\n")
+        read_until(sock, "(qemu)", 2)
+        sock.close()
+        serial = serial_has("kindling: gleam exit 0", 4)
+        t = serial.replace("\r", "")
         if "kindling: gleam exit 0" not in t:
             print("FAIL ingle (no gleam exit 0)")
             print(serial[-400:])

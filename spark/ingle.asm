@@ -1,6 +1,7 @@
-; ingle — greeter spark. Writes its name, reads a line, says the fire is lit.
-; Flat binary, nasm -f bin, entry at offset 0. Position-independent.
-; House calls: write 2, read 10, exit 1.
+; ingle — greeter spark, the desktop. Writes its name, reads a line, says
+; the fire is lit, kindles leaf once, writes the light remains when that
+; spark smoors, reads until q, exits. Flat binary, nasm -f bin, entry 0.
+; House calls: write 2, read 10, spawn 5, exit 1.
 
         bits    64
         default abs
@@ -34,6 +35,27 @@ start:
         lea     rsi, [rel lit]
         mov     rdx, 16
         int     0xE0
+
+        mov     rax, 5                  ; spawn "leaf"
+        lea     rdi, [rel leafname]
+        int     0xE0
+        test    rax, rax
+        js      .waitq
+        mov     rax, 2                  ; write "the light remains\n"
+        mov     rdi, 1
+        lea     rsi, [rel home]
+        mov     rdx, 18
+        int     0xE0
+.waitq:
+        mov     rax, 10                 ; read until q
+        xor     edi, edi
+        lea     rsi, [rel key]
+        mov     rdx, 1
+        int     0xE0
+        test    rax, rax
+        jle     .fail
+        cmp     byte [rel key], 'q'
+        jne     .waitq
         mov     rax, 1                  ; exit(0)
         xor     edi, edi
         int     0xE0
@@ -46,4 +68,7 @@ start:
 
 hello:  db      "ingle", 10
 lit:    db      "the fire is lit", 10
+home:   db      "the light remains", 10
+leafname: db    "leaf", 0
+key:    db      0
 buf:    times 256 db 0

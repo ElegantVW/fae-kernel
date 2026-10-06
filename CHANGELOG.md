@@ -1,5 +1,11 @@
 # fae-kernel changelog
 
+## ingle-light-g34 (2026-10-07)
+
+- No-Light `exit` paints serial **and** the glass `kindling: gleam exit N`, then `hlt`. Iron **q** is a visible halt (IdeaPad has no COM1).
+- `ingle` is the desktop: after `the fire is lit` it `spawn("leaf")` once. A miss is quiet. A last word ≥ 0 writes `the light remains`. Then it reads until **q** and leaves. The kernel does not grow a Light for `ingle` itself.
+- Paved `make image` packs `ingle` + `leaf` + `LEAF`. `make below` += ingle-leaf (Enter → fire → `the volume speaks` → **q** → `the light remains` → **q** → `gleam exit 0`). Ingle-only EFI tests send **q** after the fire.
+
 ## leaf-g33 (2026-10-06)
 
 - Spark `leaf` gleans Gleam name `LEAF`, writes the page, reads until `q`, `exit`s. BIOS packs the page in the cairn; efi-leaf packs only the spark and gleans from the FAT root. Serial `kindling: leaf ok` / `the volume speaks` / `gleam exit 0`. Paved `ingle` stays the greeter. `make below` += leaf + efi-leaf.

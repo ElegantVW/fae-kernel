@@ -5,7 +5,9 @@ use core::arch::asm;
 use core::ptr::{addr_of, addr_of_mut};
 
 use crate::mm::SparkRealm;
-use crate::start::{hcf, serial_print, serial_u64};
+#[cfg(feature = "house-test")]
+use crate::start::serial_u64;
+use crate::start::{hcf, serial_print};
 
 pub const YIELD: u64 = 0;
 pub const EXIT: u64 = 1;
@@ -28,6 +30,40 @@ const ENOSYS: u64 = 38;
 
 fn err(n: u64) -> u64 {
     0u64.wrapping_sub(n)
+}
+
+/// No Light: the sitting ends. Serial and glass, so iron sees the halt.
+fn speak_exit(code: u64) {
+    let mut buf = [0u8; 48];
+    let p = b"kindling: gleam exit ";
+    let mut n = 0usize;
+    while n < p.len() {
+        buf[n] = p[n];
+        n += 1;
+    }
+    if code == 0 {
+        buf[n] = b'0';
+        n += 1;
+    } else {
+        let mut tmp = [0u8; 20];
+        let mut i = 20usize;
+        let mut x = code;
+        while x > 0 {
+            i -= 1;
+            tmp[i] = b'0' + (x % 10) as u8;
+            x /= 10;
+        }
+        while i < 20 {
+            buf[n] = tmp[i];
+            n += 1;
+            i += 1;
+        }
+    }
+    buf[n] = b'\n';
+    n += 1;
+    let s = core::str::from_utf8(&buf[..n]).unwrap();
+    serial_print(s);
+    crate::glass::put_bytes(buf.as_ptr(), n as u64);
 }
 
 fn write_serial(buf: *const u8, len: u64) -> u64 {
@@ -58,9 +94,7 @@ pub fn dispatch(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
                 smoor(a0);
                 0
             } else {
-                serial_print("kindling: gleam exit ");
-                serial_u64(a0);
-                serial_print("\n");
+                speak_exit(a0);
                 hcf();
             }
         }
