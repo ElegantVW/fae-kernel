@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## usb-msc-g29b (2026-10-06)
+
+- Iron G29 printed `no msc` (and `no usb`): bringup never kept a host. QEMU hid it — devices CCS immediately. After HCRST the IdeaPad camera/BT can CCS first; `power_ports` returned on that and the side-port Databar (USB2 HS, BOT 8/6/50) was still reconnecting. Settle 150 ms on the G28 clock, then rescan (100 ms × 4) so a late CCS is seen. USB3 ports warm-reset when !PED. 10 ms reset recovery before Address/GET_DESCRIPTOR. Glass names the miss: `no ccs` / `no dev` / `no bot` / `no cap` / `msc`. Empty Thunderbolt xHCI bails after one extra settle.
+
 ## usb-msc-g29 (2026-10-06)
 
 - xHCI now walks every root port and one hub hop for BOT mass storage (class 8 / subclass 6 / proto `0x50`) as well as a HID boot keyboard. HID no longer stops the scan. Bulk IN/OUT, CBW/CSW, TEST UNIT READY retries, READ CAPACITY(10). Glass `msc` / `no msc` after `tick`. HID interrupt completions stay off the BOT `xfer_seen` flag so ingle still hears Enter. `make below` += efi-msc (`usb-kbd` on `xhci.0` port 1, `usb-storage` on port 2). Stow is still ATA; FAT/KINDLOG waits.

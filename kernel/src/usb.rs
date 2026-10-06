@@ -111,6 +111,11 @@ static HOST: HostCell = HostCell(UnsafeCell::new(None));
 static mut KBD: bool = false;
 static mut MSC: bool = false;
 static mut FOUND: bool = false;
+/// How far bringup got: 0 none, 1 CCS, 2 device desc, 3 BOT configured, 4 capacity.
+static mut MISS: u8 = 0;
+const M_CCS: u8 = 1;
+const M_DEV: u8 = 2;
+const M_BOT: u8 = 3;
 
 fn host_mut() -> &'static mut Option<Host> {
     unsafe { &mut *HOST.0.get() }
@@ -190,6 +195,40 @@ fn pause() {
     while n < 200_000 {
         n = n.saturating_add(1);
         core::hint::spin_loop();
+    }
+}
+
+fn bump(step: u8) {
+    unsafe {
+        let p = core::ptr::addr_of_mut!(MISS);
+        if p.read() < step {
+            p.write(step);
+        }
+    }
+}
+
+fn recover() {
+    if crate::timer::clock_live() {
+        crate::timer::sleep_ms(10);
+    } else {
+        pause();
+    }
+}
+
+fn settle(h: &mut Host, ms: u64) {
+    if crate::timer::clock_live() {
+        let t0 = crate::timer::ms();
+        while crate::timer::ms().saturating_sub(t0) < ms {
+            process_events(h);
+            core::hint::spin_loop();
+        }
+        return;
+    }
+    let mut n = 0u32;
+    while n < 80 {
+        process_events(h);
+        pause();
+        n = n.saturating_add(1);
     }
 }
 
@@ -942,8 +981,10 @@ fn try_msc(
     ) {
         return false;
     }
+    bump(M_BOT);
     h.msc_slot = slot;
     h.msc_tag = 1;
+    recover();
     let _ = msc_ready(h);
     let cap = [0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     if !bot(h, &cap, h.data + MSC_DATA, 8, true) {
@@ -1048,6 +1089,7 @@ fn try_hub(
         };
         let tt_port = if tt_slot != 0 { hp as u32 } else { 0 };
         if address_device(h, child, root_port, speed, hp as u32, tt_slot, tt_port) {
+            recover();
             let _ = try_msc(h, child, root_port, speed, hp as u32, tt_slot, tt_port);
             let _ = try_hid(h, child, root_port, speed, hp as u32, tt_slot, tt_port);
         }
@@ -1071,6 +1113,7 @@ fn try_tree(
     if !get_desc(h, slot, 1, 0, 18) {
         return false;
     }
+    bump(M_DEV);
     let class = unsafe { (h.data as *const u8).add(4).read() };
     if class == 9 {
         return try_hub(h, slot, root_port, speed);
@@ -1090,7 +1133,7 @@ fn try_tree(
     ok
 }
 
-fn power_ports(h: &Host) {
+fn power_ports(h: &mut Host) {
     if !h.ppc {
         return;
     }
@@ -1105,18 +1148,7 @@ fn power_ports(h: &Host) {
         let _ = wait_set(portsc(h.op, port), PP);
         port = port.saturating_add(1);
     }
-    let mut n = 0u32;
-    while n < 40 {
-        let mut port = 1u32;
-        while port <= h.max_ports {
-            if r32(portsc(h.op, port)) & CCS != 0 {
-                return;
-            }
-            port = port.saturating_add(1);
-        }
-        pause();
-        n = n.saturating_add(1);
-    }
+    process_events(h);
 }
 
 fn reset_port(h: &Host, port: u32) -> Option<u32> {
@@ -1125,11 +1157,22 @@ fn reset_port(h: &Host, port: u32) -> Option<u32> {
     if v & CCS == 0 {
         return None;
     }
-    w32(a, r32(a) | PR | PORT_CHG);
-    if !wait_set(a, PRC) {
+    bump(M_CCS);
+    let ss_port = (port as usize) < PORTS
+        && h.st_usb3 != 0
+        && h.port_st[port as usize] == h.st_usb3 as u8;
+    if v & PED == 0 && ss_port {
         w32(a, r32(a) | WPR | PORT_CHG);
         if !wait_set(a, WRC) {
             return None;
+        }
+    } else {
+        w32(a, r32(a) | PR | PORT_CHG);
+        if !wait_set(a, PRC) {
+            w32(a, r32(a) | WPR | PORT_CHG);
+            if !wait_set(a, WRC) {
+                return None;
+            }
         }
     }
     w32(a, r32(a) | PORT_CHG);
@@ -1141,6 +1184,36 @@ fn reset_port(h: &Host, port: u32) -> Option<u32> {
         None
     } else {
         Some(speed)
+    }
+}
+
+fn scan_root(h: &mut Host, tried: &mut [bool; PORTS]) {
+    let mut port = 1u32;
+    while port <= h.max_ports && (port as usize) < PORTS {
+        process_events(h);
+        let v = r32(portsc(h.op, port));
+        if v & CCS != 0 {
+            bump(M_CCS);
+        }
+        if tried[port as usize] || v & CCS == 0 {
+            port = port.saturating_add(1);
+            continue;
+        }
+        if let Some(speed) = reset_port(h, port) {
+            tried[port as usize] = true;
+            recover();
+            let ty = slot_type_for(h, speed, port);
+            if let Some(slot) = enable_slot(h, ty) {
+                if address_device(h, slot, port, speed, 0, 0, 0) {
+                    recover();
+                    let _ = try_tree(h, slot, port, speed, 0, 0, 0);
+                }
+            }
+        }
+        if h.kbd_slot != 0 && h.msc_slot != 0 {
+            return;
+        }
+        port = port.saturating_add(1);
     }
 }
 
@@ -1324,22 +1397,20 @@ fn bringup(bar: u64, len: u64) -> bool {
         msc_in_dci: 0,
         msc_tag: 1,
     };
-    power_ports(&h);
-    let mut port = 1u32;
-    while port <= h.max_ports {
-        process_events(&mut h);
-        if let Some(speed) = reset_port(&h, port) {
-            let ty = slot_type_for(&h, speed, port);
-            if let Some(slot) = enable_slot(&mut h, ty) {
-                if address_device(&mut h, slot, port, speed, 0, 0, 0) {
-                    let _ = try_tree(&mut h, slot, port, speed, 0, 0, 0);
-                }
+    power_ports(&mut h);
+    settle(&mut h, 150);
+    let mut tried = [false; PORTS];
+    scan_root(&mut h, &mut tried);
+    let mut round = 0u32;
+    while h.msc_slot == 0 && round < 4 {
+        unsafe {
+            if core::ptr::addr_of!(MISS).read() < M_CCS && round >= 1 {
+                break;
             }
         }
-        if h.kbd_slot != 0 && h.msc_slot != 0 {
-            break;
-        }
-        port = port.saturating_add(1);
+        settle(&mut h, 100);
+        scan_root(&mut h, &mut tried);
+        round = round.saturating_add(1);
     }
     if h.kbd_slot == 0 && h.msc_slot == 0 {
         return false;
@@ -1359,6 +1430,7 @@ pub fn init() {
         core::ptr::addr_of_mut!(KBD).write(false);
         core::ptr::addr_of_mut!(MSC).write(false);
         core::ptr::addr_of_mut!(FOUND).write(false);
+        core::ptr::addr_of_mut!(MISS).write(0);
     }
     let mut bars = [crate::pci::XhciBar { bar: 0, len: 0 }; 4];
     let n = crate::pci::iter_xhci(&mut bars);
@@ -1387,6 +1459,20 @@ pub fn kbd_live() -> bool {
 
 pub fn msc_live() -> bool {
     unsafe { core::ptr::addr_of!(MSC).read() }
+}
+
+/// Glass/serial word after `tick`: `msc` or the step that missed.
+pub fn msc_line() -> &'static str {
+    if msc_live() {
+        return "msc";
+    }
+    match unsafe { core::ptr::addr_of!(MISS).read() } {
+        0 => "no ccs",
+        1 => "no dev",
+        2 => "no bot",
+        3 => "no cap",
+        _ => "no msc",
+    }
 }
 
 /// Drain the event ring. Safe to call when USB never came up.

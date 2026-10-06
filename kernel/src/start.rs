@@ -234,14 +234,13 @@ unsafe extern "C" fn after_cup() -> ! {
                 serial_print("kindling: efi sleep short\n");
             }
         }
-        if crate::usb::msc_live() {
-            serial_print("kindling: msc\n");
-            let msg = b"msc\n";
-            crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
-        } else {
-            serial_print("kindling: no msc\n");
-            let msg = b"no msc\n";
-            crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
+        {
+            let line = crate::usb::msc_line();
+            serial_print("kindling: ");
+            serial_print(line);
+            serial_print("\n");
+            crate::glass::put_bytes(line.as_ptr(), line.len() as u64);
+            crate::glass::put_bytes(b"\n".as_ptr(), 1);
         }
     }
     #[cfg(feature = "house-test")]
