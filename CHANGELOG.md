@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## usb-hid-g27 (2026-10-06)
+
+- Iron G26 showed `ingle` waiting; the IdeaPad keyboard is USB. House `read` now polls xHCI as well as the 8042. PCI CF8 finds class `0x0C0330`, maps the BAR UC, takes USBLEGSUP, halt/reset/run, addresses a HID boot keyboard, `SET_PROTOCOL` 0. Reports become ASCII on the same queue. Serial `kindling: xhci 0xBAR` and `kindling: usb kbd` (or `no usb`). `make below` += efi-usb (`qemu-xhci` + `usb-kbd`; must print `usb kbd` before `sendkey`). 8042 `efi-ingle` stays.
+
 ## glass-g26 (2026-10-05)
 
 - Stick was current (md5 match); iron still Grove + quiet cursor. EFI well identity-mapped only 0..1 GiB, then `mov cr3` — Insyde PE/GOP above that blinds the panel, QEMU OVMF stays low and serial-only gates stay green. `prepare_well` now maps the loaded image (WB) and GOP (UC) into the new tables before CR3. If the PE ends past the well cap, the bump drinks 4 MiB (or after a low image), never past `ram_end`. `show()` writes `kindling` on the log row (pre-EBS GOP already works on iron). After CR3 the glass says `well`. ConOut prints `pe` / `gop` hex. Serial `kindling: gop 0xADDR 0xPITCH` after the well. `make below` += efi-glass (QEMU `xp` of the log row) and stick (`cmp` KINDLING when the pen is plugged; skip if the pen is out or sudo is missing). Audit 2G bowl waits 8s.

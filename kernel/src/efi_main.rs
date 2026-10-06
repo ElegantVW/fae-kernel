@@ -12,6 +12,8 @@ mod house;
 mod idt;
 mod kbd;
 mod mm;
+mod pci;
+mod usb;
 mod start;
 mod timer;
 

@@ -124,6 +124,10 @@ pub fn init() {
     }
 }
 
+pub(crate) fn push_ascii(b: u8) {
+    push(b);
+}
+
 fn push(b: u8) {
     if b == 0 {
         return;
@@ -237,17 +241,18 @@ pub extern "sysv64" fn kbd_tick() {
     }
 }
 
-/// House `read` fd 0. Blocks until a byte when the 8042 is live.
-/// Polls the data port: EFI has no PIT, and iron IRQ1 often dies after
-/// ExitBootServices, so `hlt` alone never wakes.
+/// House `read` fd 0. Blocks until a byte when the 8042 or a USB boot
+/// keyboard is live. Polls both: EFI has no PIT, and iron IRQ1 often dies
+/// after ExitBootServices, so `hlt` alone never wakes.
 pub fn read(buf: *mut u8, len: u64) -> u64 {
     if buf.is_null() || len == 0 || len > (1 << 20) {
         return err(EPERM);
     }
-    if !unsafe { core::ptr::addr_of!(LIVE).read() } {
+    if !live() && !crate::usb::kbd_live() {
         return err(EAGAIN);
     }
     drain_port();
+    crate::usb::poll();
     let n = drain(buf, len);
     if n > 0 {
         return n;
@@ -257,6 +262,7 @@ pub fn read(buf: *mut u8, len: u64) -> u64 {
     }
     loop {
         drain_port();
+        crate::usb::poll();
         if let Some(b) = pop() {
             unsafe {
                 buf.write_volatile(b);

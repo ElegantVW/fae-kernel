@@ -308,6 +308,9 @@ cp -f kernel/BOOTX64.EFI esp/EFI/BOOT/
 cp -f spark/cairn.bin esp/EFI/BOOT/CAIRN
 python3 scripts/check-efi-ingle.py
 
+echo "---- efi-usb ----"
+python3 scripts/check-efi-usb.py
+
 echo "---- efi-glass ----"
 python3 scripts/check-efi-glass.py
 
