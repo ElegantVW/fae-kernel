@@ -1,7 +1,7 @@
 //! xHCI + HID boot keyboard + MSC (BOT). Event ring is polled.
 
 use core::cell::UnsafeCell;
-use core::sync::atomic::{compiler_fence, Ordering};
+use core::sync::atomic::{compiler_fence, fence, Ordering};
 
 use crate::start::{serial_hex, serial_print};
 
@@ -20,13 +20,14 @@ const TRB_ENABLE_SLOT: u32 = 9;
 const TRB_ADDRESS: u32 = 11;
 const TRB_CONFIG_EP: u32 = 12;
 const TRB_EVAL: u32 = 13;
+const TRB_RESET_EP: u32 = 14;
+const TRB_SET_DEQ: u32 = 16;
 const TRB_XFER: u32 = 32;
 const TRB_CMD: u32 = 33;
 const TRB_PORT: u32 = 34;
 
 const IOC: u32 = 1 << 5;
 const IDT: u32 = 1 << 6;
-const CH: u32 = 1 << 4;
 const ISP: u32 = 1 << 2;
 const TC: u32 = 1 << 1;
 
@@ -258,8 +259,17 @@ fn ring_new(base: u64) -> Ring {
 
 impl Ring {
     fn enq(&mut self, param: u64, status: u32, ctrl: u32) -> u64 {
+        self.write(param, status, ctrl, self.c)
+    }
+
+    /// Invert cycle so the HC cannot prefetch a partial control transfer.
+    fn enq_held(&mut self, param: u64, status: u32, ctrl: u32) -> u64 {
+        self.write(param, status, ctrl, self.c ^ 1)
+    }
+
+    fn write(&mut self, param: u64, status: u32, ctrl: u32, cycle: u32) -> u64 {
         let addr = self.base + self.i as u64 * 16;
-        wr_trb(addr, param, status, ctrl | self.c);
+        wr_trb(addr, param, status, ctrl | (cycle & 1));
         self.i = self.i.saturating_add(1);
         if self.i == RING - 1 {
             wr_trb(
@@ -273,6 +283,11 @@ impl Ring {
         }
         addr
     }
+}
+
+fn give_trb(addr: u64, cycle: u32) {
+    let ctrl = r32(addr + 12);
+    w32(addr + 12, (ctrl & !1) | (cycle & 1));
 }
 
 fn portsc(op: u64, port: u32) -> u64 {
@@ -296,7 +311,7 @@ fn port_ack(a: u64) {
 }
 
 fn doorbell(h: &Host, slot: u32, target: u32) {
-    compiler_fence(Ordering::SeqCst);
+    fence(Ordering::SeqCst);
     w32(h.db + slot as u64 * 4, target);
 }
 
@@ -461,6 +476,23 @@ fn fill_slot_ctx(h: &Host, speed: u32, root_port: u32, route: u32, tt_slot: u32,
     w32(slot_ctx + 8, (tt_slot & 0xFF) | ((tt_port & 0xFF) << 8));
 }
 
+fn ep0_mps(speed: u32) -> u32 {
+    if speed >= 4 {
+        512
+    } else if speed == 3 {
+        64
+    } else {
+        8
+    }
+}
+
+fn fill_ep0(h: &Host, mps: u32, deq: u64, dcs: u32) {
+    let ep0 = h.in_ctx + 2 * h.ctxsz as u64;
+    w32(ep0 + 4, (mps << 16) | (4 << 3) | (3 << 1));
+    w64(ep0 + 8, deq | (dcs as u64 & 1));
+    w32(ep0 + 16, 8);
+}
+
 fn address_device(
     h: &mut Host,
     slot: u8,
@@ -474,20 +506,10 @@ fn address_device(
     unsafe {
         core::ptr::write_bytes(h.in_ctx as *mut u8, 0, PAGE);
     }
-    let cs = h.ctxsz as u64;
     w32(h.in_ctx + 4, 0b11);
     fill_slot_ctx(h, speed, root_port, route, tt_slot, tt_port, 1);
-    let ep0 = h.in_ctx + 2 * cs;
-    let mps: u32 = if speed >= 4 {
-        512
-    } else if speed == 3 {
-        64
-    } else {
-        8
-    };
-    w32(ep0 + 4, (mps << 16) | (4 << 3) | (3 << 1));
     let ring = h.slot_ep0[slot as usize];
-    w64(ep0 + 8, ring.base | ring.c as u64);
+    fill_ep0(h, ep0_mps(speed), ring.base, ring.c);
     command(
         h,
         h.in_ctx,
@@ -509,14 +531,11 @@ fn evaluate_ep0(
     unsafe {
         core::ptr::write_bytes(h.in_ctx as *mut u8, 0, PAGE);
     }
-    let cs = h.ctxsz as u64;
     w32(h.in_ctx + 4, 0b11);
     fill_slot_ctx(h, speed, root_port, route, tt_slot, tt_port, 1);
-    let ep0 = h.in_ctx + 2 * cs;
-    w32(ep0 + 4, (mps << 16) | (4 << 3) | (3 << 1));
     let ring = h.slot_ep0[slot as usize];
     let deq = ring.base + ring.i as u64 * 16;
-    w64(ep0 + 8, deq | ring.c as u64);
+    fill_ep0(h, mps, deq, ring.c);
     command(
         h,
         h.in_ctx,
@@ -525,25 +544,56 @@ fn evaluate_ep0(
     )
 }
 
+fn heal_ep0(h: &mut Host, slot: u8) {
+    let _ = command(
+        h,
+        0,
+        0,
+        (TRB_RESET_EP << 10) | (1 << 16) | ((slot as u32) << 24),
+    );
+    let ring = h.slot_ep0[slot as usize];
+    let deq = ring.base + ring.i as u64 * 16;
+    let _ = command(
+        h,
+        deq | (ring.c as u64 & 1),
+        0,
+        (TRB_SET_DEQ << 10) | (1 << 16) | ((slot as u32) << 24),
+    );
+    recover();
+}
+
+/// Setup, Data, and Status are separate TDs (xHCI 4.11.2.2). TRT IN=3, OUT=2.
+/// The first TRB stays software-owned until the rest are written — Intel
+/// prefetches EP0 as soon as Address Device leaves the endpoint Running.
 fn control(h: &mut Host, slot: u8, setup: [u8; 8], buf: u64, len: u16, din: bool) -> bool {
     let pkt = u64::from_le_bytes(setup);
     let trt: u32 = if len == 0 {
         0
     } else if din {
-        2
-    } else {
         3
+    } else {
+        2
     };
-    let _ = h.slot_ep0[slot as usize].enq(pkt, 8, (TRB_SETUP << 10) | IDT | CH | (trt << 16));
+    h.xfer_seen = false;
+    let c0 = h.slot_ep0[slot as usize].c;
+    let setup_addr = h.slot_ep0[slot as usize].enq_held(
+        pkt,
+        8,
+        (TRB_SETUP << 10) | IDT | (trt << 16),
+    );
     if len != 0 {
         let dir = if din { 1u32 << 16 } else { 0 };
-        let _ = h.slot_ep0[slot as usize].enq(buf, len as u32, (TRB_DATA << 10) | CH | dir);
+        let _ = h.slot_ep0[slot as usize].enq(buf, len as u32, (TRB_DATA << 10) | dir);
     }
     let sdir = if din && len != 0 { 0 } else { 1u32 << 16 };
     let _ = h.slot_ep0[slot as usize].enq(0, 0, (TRB_STATUS << 10) | IOC | sdir);
-    h.xfer_seen = false;
+    give_trb(setup_addr, c0);
     doorbell(h, slot as u32, 1);
-    wait_xfer(h)
+    let ok = wait_xfer(h);
+    if !ok {
+        heal_ep0(h, slot);
+    }
+    ok
 }
 
 fn wait_xfer(h: &mut Host) -> bool {
@@ -561,10 +611,17 @@ fn get_desc(h: &mut Host, slot: u8, ty: u8, idx: u8, len: u16) -> bool {
     s[3] = ty;
     s[6] = (len & 0xFF) as u8;
     s[7] = (len >> 8) as u8;
-    unsafe {
-        core::ptr::write_bytes(h.data as *mut u8, 0, PAGE);
+    let mut n = 0u32;
+    while n < 2 {
+        unsafe {
+            core::ptr::write_bytes(h.data as *mut u8, 0, PAGE);
+        }
+        if control(h, slot, s, h.data, len, true) {
+            return true;
+        }
+        n = n.saturating_add(1);
     }
-    control(h, slot, s, h.data, len, true)
+    false
 }
 
 fn set_config(h: &mut Host, slot: u8, cfg: u8) -> bool {
@@ -1160,6 +1217,33 @@ fn try_hub(
     h.kbd_slot != 0 || h.msc_slot != 0
 }
 
+fn fetch_dev(
+    h: &mut Host,
+    slot: u8,
+    root_port: u32,
+    speed: u32,
+    route: u32,
+    tt_slot: u32,
+    tt_port: u32,
+) -> bool {
+    if speed < 3 {
+        if get_desc(h, slot, 1, 0, 8) {
+            let bmax = r8(h.data + 7) as u32;
+            let mps = if bmax == 0 { 8 } else { bmax };
+            let _ = evaluate_ep0(h, slot, root_port, speed, route, tt_slot, tt_port, mps);
+        }
+    }
+    if get_desc(h, slot, 1, 0, 18) {
+        return true;
+    }
+    let _ = evaluate_ep0(h, slot, root_port, speed, route, tt_slot, tt_port, 64);
+    if get_desc(h, slot, 1, 0, 18) {
+        return true;
+    }
+    let _ = evaluate_ep0(h, slot, root_port, speed, route, tt_slot, tt_port, 8);
+    get_desc(h, slot, 1, 0, 18)
+}
+
 fn try_tree(
     h: &mut Host,
     slot: u8,
@@ -1169,13 +1253,7 @@ fn try_tree(
     tt_slot: u32,
     tt_port: u32,
 ) -> bool {
-    let got8 = get_desc(h, slot, 1, 0, 8);
-    if got8 && speed < 3 {
-        let bmax = r8(h.data + 7) as u32;
-        let mps = if bmax == 0 { 8 } else { bmax };
-        let _ = evaluate_ep0(h, slot, root_port, speed, route, tt_slot, tt_port, mps);
-    }
-    if !get_desc(h, slot, 1, 0, 18) {
+    if !fetch_dev(h, slot, root_port, speed, route, tt_slot, tt_port) {
         return false;
     }
     bump(M_DEV);

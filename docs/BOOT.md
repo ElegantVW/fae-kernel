@@ -79,7 +79,9 @@ BOT mass-storage device answers READ CAPACITY (every root port and hub
 child is scanned; HID does not stop the walk). After HCRST the ports
 settle on the clock and are scanned twice so a late CCS (the boot stick)
 is seen. Port waits are milliseconds. PED is write-1-to-clear: an ack
-must not write 1 to it or the port disables. Miss names the step: `no ccs` (no connect), `no rst` (connect, reset failed),
+must not write 1 to it or the port disables. EP0 control TDs match
+xHCI 1.0 (TRT IN=3, separate Setup/Data/Status TDs, first TRB held).
+Miss names the step: `no ccs` (no connect), `no rst` (connect, reset failed),
 `no addr` (reset, Address Device failed), `no desc` (addressed, no
 GET_DESCRIPTOR), `no bot` (no BOT interface), `no cap` (READ CAPACITY
 failed).

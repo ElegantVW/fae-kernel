@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## usb-msc-g29f (2026-10-06)
+
+- Iron G29e printed `no desc`: reset and Address Device lived, GET_DESCRIPTOR did not. EP0 control TDs now match xHCI 1.0 / Linux: TRT IN=3 OUT=2, Setup/Data/Status are separate TDs (no Chain), first TRB cycle held until the rest are written, `mfence` before the doorbell. Average TRB Length 8 on EP0. A failed control resets EP0 and sets the dequeue pointer; GET_DESCRIPTOR retries, then Evaluate 64/8 if PSI was a lie. QEMU hid the swapped TRT and the Chain bit.
+
 ## usb-msc-g29e (2026-10-06)
 
 - Iron G29d printed `no rst`. PED (PORTSC bit 1) is RW1CS: writing 1 *disables* the port. `port_neutral` had copied Linux RO but included PED; after reset the ack wrote PED=1 and killed Enable. QEMU ignores that write. Neutral now matches Linux (CCS/OC/speed/PP/PLS only). USB2 waits for PR to self-clear; USB3 uses WPR. Never write 1 to PED unless we mean to disable.
