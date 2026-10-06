@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## usb-msc-g29d (2026-10-06)
+
+- Iron G29c was a blink at `well` then still `no dev` (CCS, no GET_DESCRIPTOR). PORTSC writes now match Linux (preserve RO/RWS, do not write-1 all change bits with PR). USBLEGSUP waits up to 1 s for BIOS to drop the semaphore. Glass splits the miss: `no rst` / `no addr` / `no desc` / `no bot` / `no cap`. GET_DESCRIPTOR 18 still runs if the 8-byte probe stalls.
+
 ## usb-msc-g29c (2026-10-06)
 
 - Iron G29b printed `no dev` after a minute at `well`. CCS was seen, GET_DESCRIPTOR never was: failed PORTSC resets retried with 4 million uncached MMIO polls, and USBLEGSUP/PP/HCRST used the same spin. Waits are milliseconds on the G28 clock (20–100 ms). One reset try per port; a second scan 100 ms later catches a late stick. Dead BAR (`0xFFFFFFFF`, caplen>0x80) is refused. PCI CF8 walks buses 0..=15. CAS gets a warm reset. EP0 starts at 8 for FS/LS, then Evaluate. IMAN IE at runtime 0x20. Glass still `no ccs` / `no dev` / `no bot` / `no cap` / `msc`.

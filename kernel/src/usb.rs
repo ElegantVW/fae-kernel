@@ -55,9 +55,9 @@ const CC_SHORT: u32 = 13;
 const CAS: u32 = 1 << 24;
 
 const T_SHORT: u64 = 20;
-const T_PORT: u64 = 50;
 const T_CMD: u64 = 100;
 const T_RST: u64 = 100;
+const T_BIOS: u64 = 1000;
 
 const FEAT_PORT_RESET: u16 = 4;
 const FEAT_PORT_POWER: u16 = 8;
@@ -117,11 +117,13 @@ static HOST: HostCell = HostCell(UnsafeCell::new(None));
 static mut KBD: bool = false;
 static mut MSC: bool = false;
 static mut FOUND: bool = false;
-/// How far bringup got: 0 none, 1 CCS, 2 device desc, 3 BOT configured, 4 capacity.
+/// How far bringup got: CCS, reset, address, desc, BOT, capacity.
 static mut MISS: u8 = 0;
 const M_CCS: u8 = 1;
-const M_DEV: u8 = 2;
-const M_BOT: u8 = 3;
+const M_RST: u8 = 2;
+const M_ADDR: u8 = 3;
+const M_DEV: u8 = 4;
+const M_BOT: u8 = 5;
 
 fn host_mut() -> &'static mut Option<Host> {
     unsafe { &mut *HOST.0.get() }
@@ -277,6 +279,21 @@ fn portsc(op: u64, port: u32) -> u64 {
     op + 0x400 + (port as u64 - 1) * 0x10
 }
 
+/// Preserve RO + RWS; leave RW1C change bits 0 (Linux xhci_port_state_to_neutral).
+fn port_neutral(v: u32) -> u32 {
+    let ro = CCS | PED | (1 << 3) | (0xF << 10) | (1 << 30);
+    let rws = (0xF << 5) | PP | (0x3 << 14) | (0x7 << 25);
+    (v & ro) | (v & rws)
+}
+
+fn port_set(a: u64, bits: u32) {
+    w32(a, port_neutral(r32(a)) | bits);
+}
+
+fn port_ack(a: u64) {
+    w32(a, port_neutral(r32(a)) | PORT_CHG);
+}
+
 fn doorbell(h: &Host, slot: u32, target: u32) {
     compiler_fence(Ordering::SeqCst);
     w32(h.db + slot as u64 * 4, target);
@@ -309,8 +326,7 @@ fn process_events(h: &mut Host) {
             TRB_PORT => {
                 let port = ((param >> 24) & 0xFF) as u32;
                 if (1..256).contains(&port) {
-                    let a = portsc(h.op, port);
-                    w32(a, r32(a) | PORT_CHG);
+                    port_ack(portsc(h.op, port));
                 }
             }
             _ => {}
@@ -1130,6 +1146,7 @@ fn try_hub(
         };
         let tt_port = if tt_slot != 0 { hp as u32 } else { 0 };
         if address_device(h, child, root_port, speed, hp as u32, tt_slot, tt_port) {
+            bump(M_ADDR);
             recover();
             let _ = try_msc(h, child, root_port, speed, hp as u32, tt_slot, tt_port);
             let _ = try_hid(h, child, root_port, speed, hp as u32, tt_slot, tt_port);
@@ -1151,10 +1168,8 @@ fn try_tree(
     tt_slot: u32,
     tt_port: u32,
 ) -> bool {
-    if !get_desc(h, slot, 1, 0, 8) {
-        return false;
-    }
-    if speed < 3 {
+    let got8 = get_desc(h, slot, 1, 0, 8);
+    if got8 && speed < 3 {
         let bmax = r8(h.data + 7) as u32;
         let mps = if bmax == 0 { 8 } else { bmax };
         let _ = evaluate_ep0(h, slot, root_port, speed, route, tt_slot, tt_port, mps);
@@ -1189,7 +1204,7 @@ fn power_ports(h: &mut Host) {
     let mut port = 1u32;
     while port <= h.max_ports {
         let a = portsc(h.op, port);
-        w32(a, r32(a) | PP | PORT_CHG);
+        port_set(a, PP);
         port = port.saturating_add(1);
     }
     let mut port = 1u32;
@@ -1210,28 +1225,34 @@ fn reset_port(h: &Host, port: u32) -> Option<u32> {
     let ss_port = (port as usize) < PORTS
         && h.st_usb3 != 0
         && h.port_st[port as usize] == h.st_usb3 as u8;
-    if v & CAS != 0 || (v & PED == 0 && ss_port) {
-        w32(a, r32(a) | WPR | PORT_CHG);
-        if !wait_set(a, WRC, T_PORT) {
+    let speed0 = (v >> 10) & 0xF;
+    if v & CAS != 0 || speed0 >= 4 || (v & PED == 0 && ss_port) {
+        port_set(a, WPR);
+        if !wait_set(a, WRC, T_RST) {
             return None;
         }
     } else {
-        w32(a, r32(a) | PR | PORT_CHG);
-        if !wait_set(a, PRC, T_PORT) {
-            w32(a, r32(a) | WPR | PORT_CHG);
-            if !wait_set(a, WRC, T_PORT) {
+        port_set(a, PR);
+        if !wait_set(a, PRC, T_RST) {
+            port_set(a, WPR);
+            if !wait_set(a, WRC, T_RST) {
                 return None;
             }
         }
     }
-    w32(a, r32(a) | PORT_CHG);
-    if !wait_set(a, PED, T_PORT) {
+    port_ack(a);
+    if !wait_set(a, PED, T_RST) {
         return None;
     }
-    let speed = (r32(a) >> 10) & 0xF;
+    let mut speed = (r32(a) >> 10) & 0xF;
+    if speed == 0 {
+        recover();
+        speed = (r32(a) >> 10) & 0xF;
+    }
     if speed == 0 {
         None
     } else {
+        bump(M_RST);
         Some(speed)
     }
 }
@@ -1254,6 +1275,7 @@ fn scan_root(h: &mut Host, tried: &mut [bool; PORTS]) {
             let ty = slot_type_for(h, speed, port);
             if let Some(slot) = enable_slot(h, ty) {
                 if address_device(h, slot, port, speed, 0, 0, 0) {
+                    bump(M_ADDR);
                     recover();
                     let _ = try_tree(h, slot, port, speed, 0, 0, 0);
                 }
@@ -1280,7 +1302,7 @@ fn parse_caps(bar: u64, xecp: u32, port_st: &mut [u8; PORTS], st2: &mut u32, st3
         let major = (cap >> 24) & 0xFF;
         if id == 1 {
             w32(bar + off * 4, cap | (1 << 24));
-            let _ = wait_eq(bar + off * 4, 1 << 16, 0, T_PORT);
+            let _ = wait_eq(bar + off * 4, 1 << 16, 0, T_BIOS);
             w32(bar + off * 4 + 4, 0);
         } else if id == 2 {
             let d2 = r32(bar + off * 4 + 8);
@@ -1507,9 +1529,11 @@ pub fn msc_line() -> &'static str {
     }
     match unsafe { core::ptr::addr_of!(MISS).read() } {
         0 => "no ccs",
-        1 => "no dev",
-        2 => "no bot",
-        3 => "no cap",
+        1 => "no rst",
+        2 => "no addr",
+        3 => "no desc",
+        4 => "no bot",
+        5 => "no cap",
         _ => "no msc",
     }
 }
