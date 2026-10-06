@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## leaf-g33 (2026-10-06)
+
+- Spark `leaf` gleans Gleam name `LEAF`, writes the page, reads until `q`, `exit`s. BIOS packs the page in the cairn; efi-leaf packs only the spark and gleans from the FAT root. Serial `kindling: leaf ok` / `the volume speaks` / `gleam exit 0`. Paved `ingle` stays the greeter. `make below` += leaf + efi-leaf.
+
 ## glean-volume-g32 (2026-10-06)
 
 - `glean` still takes the cairn first. When that name is missing (or there is no cairn) and MSC saw a FAT volume, it gathers from the volume's **root** by the same Gleam name (1–64, no `/`). FAT is the medium: 8.3 pad-strip and LFN ASCII fold into the house name. Cap 1 MiB. Read only. A bad cairn xor stays `-EIO`. After `fat`, the kernel gleans `LEAF` on the same path and speaks the page; a miss is quiet (iron Databar has no `LEAF`). QEMU efi-msc plants a real FAT32 at LBA 2048 with `LEAF` / `the volume speaks`. No WRITE(10).

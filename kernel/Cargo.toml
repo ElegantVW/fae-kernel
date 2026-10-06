@@ -16,6 +16,7 @@ reclaim-test = []
 tale-test = []
 spawn-test = []
 ingle-test = []
+leaf-test = []
 
 [dependencies]
 limine = "0.5"

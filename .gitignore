@@ -8,7 +8,9 @@
 /kernel/kernel.tale.bin
 /kernel/kernel.spawn.bin
 /kernel/kernel.ingle.bin
+/kernel/kernel.leaf.bin
 /kernel/BOOTX64.EFI
+/kernel/BOOTX64.LEAF.EFI
 /fw/cerne-fw.bin
 /fw/font8x16.bin
 /ld/cerne-ld.bin

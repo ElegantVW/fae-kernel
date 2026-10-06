@@ -29,9 +29,9 @@ help:
 	@echo "  make kindle    flint + steel + hearth — paved fire"
 	@echo "  make hearth-see   same fire, window (lilac VGA)"
 	@echo "  make audit     several bowls; fail if a line is missing"
-	@echo "  make below     full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle+efi-usb+efi-usb-hub+efi-msc+efi-sleep+efi-glass)"
+	@echo "  make below     full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle+efi-usb+efi-usb-hub+efi-msc+efi-leaf+efi-sleep+efi-glass)"
 	@echo "  make below-ten    gate × 10"
-	@echo "  make test      throwaway VMs (happy..ingle) + grove + efi-glass + efi-usb + efi-usb-hub + efi-msc + efi-sleep"
+	@echo "  make test      throwaway VMs (happy..leaf) + grove + efi-glass + efi-usb + efi-usb-hub + efi-msc + efi-leaf + efi-sleep"
 	@echo "  make serial-uefi   other people's firmware, our clothes"
 	@echo "  make serial        borrowed match (Limine)"
 	@echo "  make distclean     the forest forgets; the seed does not"
@@ -68,12 +68,15 @@ test:
 	sh scripts/test-vm.sh spawn
 	sh scripts/test-vm.sh splanc
 	sh scripts/test-vm.sh ingle
+	sh scripts/test-vm.sh leaf
 	python3 scripts/check-grove.py
 	$(MAKE) efi
 	python3 scripts/check-efi-glass.py
 	python3 scripts/check-efi-usb.py
 	python3 scripts/check-efi-usb-hub.py
 	python3 scripts/check-efi-msc.py
+	$(MAKE) -C kernel efi-leaf
+	python3 scripts/check-efi-leaf.py
 	python3 scripts/check-efi-sleep.py
 	@echo "kindling: test ok"
 hearth-see: image

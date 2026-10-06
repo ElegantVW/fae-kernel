@@ -275,26 +275,35 @@ unsafe extern "C" fn after_cup() -> ! {
     serial_print(" KiB cup\n");
     #[cfg(feature = "ingle-test")]
     crate::cairn::run_ingle(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
-    #[cfg(all(feature = "spawn-test", not(feature = "ingle-test")))]
+    #[cfg(all(feature = "leaf-test", not(feature = "ingle-test")))]
+    crate::cairn::run_leaf(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
+    #[cfg(all(
+        feature = "spawn-test",
+        not(feature = "ingle-test"),
+        not(feature = "leaf-test")
+    ))]
     crate::cairn::run_spawn(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
     #[cfg(all(
         feature = "tale-test",
         not(feature = "spawn-test"),
-        not(feature = "ingle-test")
+        not(feature = "ingle-test"),
+        not(feature = "leaf-test")
     ))]
     crate::cairn::run_tale(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
     #[cfg(all(
         feature = "ring3-test",
         not(feature = "tale-test"),
         not(feature = "spawn-test"),
-        not(feature = "ingle-test")
+        not(feature = "ingle-test"),
+        not(feature = "leaf-test")
     ))]
     crate::house::enter_init(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
     #[cfg(not(any(
         feature = "ring3-test",
         feature = "tale-test",
         feature = "spawn-test",
-        feature = "ingle-test"
+        feature = "ingle-test",
+        feature = "leaf-test"
     )))]
     crate::cairn::light_ingle(unsafe { core::ptr::addr_of!(CUP_TOP).read() });
 }

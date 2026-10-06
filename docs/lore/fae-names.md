@@ -81,6 +81,7 @@ Do not propose these as new creature names. They are already working.
 | wick | Second Gleam spark (G20). Firelighting; not a signer |
 | ember | G30 test spark: the live coal that stays while the wick burns. OE *æmerge*. Not Gleed (signer), not Hearth (QEMU + suite greeter) |
 | splanc | G31 test spark that does not catch. Irish *splanc* / flint-fire. `ud2`. Not Flint (signer) |
+| leaf | G33 spark: gleans `LEAF`, writes the page, reads until `q`. The Grove's leaves; not a signer |
 | Seal, Rift, Goblin, Siren, Imp, Magpie, Ether, Scry, Spellbook, Scroll | Suite apps |
 | Aegis, Bulwark, Imbue, Menagerie, Fairy Lantern | Suite / engines |
 | Alchemy, Grimoire, Abacus, Quests, Hourglass, Almanac, Eye, Vault, Reflection, Tome, Zen, Tick, Summon, Purity, Sentinel, Ward | Suite |

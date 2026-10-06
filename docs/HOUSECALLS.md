@@ -62,6 +62,8 @@ private CR3: `kindling: spawn ok`, ember kindles `wick`, the second-leaf,
 is a lie.
 Feature `ingle-test` looses `ingle`: `kindling: ingle ok`, the spark writes
 `ingle`, `read` waits, Enter yields `the fire is lit` then `gleam exit 0`.
+Feature `leaf-test` looses `leaf`: `kindling: leaf ok`, the spark gleans
+`LEAF`, writes the page, `read` waits for `q`, then `gleam exit 0`.
 Happy path (no `*-test` feature) lights `ingle` when the cairn has it
 (`kindling: ingle ok`, then the spark). Missing cairn is a quiet halt.
 The paved serial still prints `cerne-fw / cerne-ld / fae-kernel / still only a spark / well …` first.

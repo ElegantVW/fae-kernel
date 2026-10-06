@@ -114,8 +114,8 @@ is the design working.
 ## Words (house voice, no collisions)
 
 - **cairn** — the store (stone pile for many pages; `fae-names.md` §6).
-- **leaf** — a file (the Grove's leaves). Flat names, no paths yet. G32
-  proof on the QEMU volume is Gleam name `LEAF` (the spark `leaf` waits).
+- **leaf** — a file (the Grove's leaves). Flat names, no paths yet. Also
+  the G33 spark: gleans Gleam name `LEAF`, writes the page, reads until `q`.
 - **spark** — an executable leaf (small fire that runs at CPL3).
 - **glean** — house call 8: gather a leaf's bytes (cairn first, then the
   volume root when FAT is live).
@@ -128,3 +128,4 @@ is the design working.
 - **splanc** — a spark that does not catch (G31). Irish *splanc*. `ud2`; the house names the miss.
 - **second-leaf** — `the cup is its own`.
 - **ingle** — the greeter spark: writes its name, reads a line, says the fire is lit. Packed on `make image`; EFI copies it from `EFI/BOOT/CAIRN`.
+- **LEAF** — G32/G33 proof leaf. Page `the volume speaks`. Cairn on the BIOS leaf image; FAT root on QEMU efi-msc / efi-leaf.

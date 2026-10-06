@@ -251,6 +251,18 @@ make steel >/dev/null
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
   --kernel kernel/kernel.fw.bin --out kindling.img
 
+echo "---- leaf ----"
+nasm -f bin -o spark/leaf.bin spark/leaf.asm
+make -C kernel leaf-bin
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.leaf.bin --out kindling-leaf.img \
+  --spark leaf=spark/leaf.bin --leaf LEAF=spark/LEAF.txt
+python3 scripts/check-leaf.py
+# restore the paved kernel for later steps
+make steel >/dev/null
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling.img
+
 echo "---- fmap-bad ----"
 python3 scripts/mkfont.py
 nasm -f bin -DAUDIT_BAD_FMAP -o "$FW" fw/cerne-fw.asm
@@ -364,6 +376,10 @@ python3 scripts/check-efi-usb-hub.py
 
 echo "---- efi-msc ----"
 python3 scripts/check-efi-msc.py
+
+echo "---- efi-leaf ----"
+make -C kernel efi-leaf >/dev/null
+python3 scripts/check-efi-leaf.py
 
 echo "---- efi-sleep ----"
 python3 scripts/check-efi-sleep.py
