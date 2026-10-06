@@ -314,6 +314,9 @@ python3 scripts/check-efi-usb.py
 echo "---- efi-usb-hub ----"
 python3 scripts/check-efi-usb-hub.py
 
+echo "---- efi-msc ----"
+python3 scripts/check-efi-msc.py
+
 echo "---- efi-sleep ----"
 python3 scripts/check-efi-sleep.py
 

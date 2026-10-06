@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## usb-msc-g29 (2026-10-06)
+
+- xHCI now walks every root port and one hub hop for BOT mass storage (class 8 / subclass 6 / proto `0x50`) as well as a HID boot keyboard. HID no longer stops the scan. Bulk IN/OUT, CBW/CSW, TEST UNIT READY retries, READ CAPACITY(10). Glass `msc` / `no msc` after `tick`. HID interrupt completions stay off the BOT `xfer_seen` flag so ingle still hears Enter. `make below` += efi-msc (`usb-kbd` on `xhci.0` port 1, `usb-storage` on port 2). Stow is still ATA; FAT/KINDLOG waits.
+
 ## clock-g28 (2026-10-06)
 
 - House `sleep`/`time` were path-dependent: PIT ms on BIOS, a no-op + raw `rdtsc` on EFI. After the well, Kindling maps HPET (`0xFED00000` in the `0xFEC00000` 2M UC leaf beside the LAPIC), else polls the PIT, calibrates TSC, and `time` is milliseconds on every path that arms. Glass `tick` / `no tick`. EFI proves `sleep 50` with `kindling: efi slept`. `make below` += efi-sleep. BIOS `init slept` stays.

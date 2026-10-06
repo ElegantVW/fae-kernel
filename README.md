@@ -4,7 +4,7 @@
 
 x86_64 kernel we write. The pink suite is userspace. Creature name: **Kindling** — you light kindling, not the log. Lighting tools *are* the build tools (`make help`: flint, steel, tinder, hearth, kindle).
 
-Phase 1 (memory: kindle well + cup-stack) is green. House light (G15–G28) is on: CPL3 `write`/`exit`/`read`, tale, stow, spawn, Grove on the glass, `ingle` greeter on the paved BIOS and EFI boots, USB HID boot keyboard into house `read` (root or one hub hop), one clock (`sleep`/`time` are ms on EFI too). Linux ELF stays later; `grant`/`flush` stay shut.
+Phase 1 (memory: kindle well + cup-stack) is green. House light (G15–G29) is on: CPL3 `write`/`exit`/`read`, tale, stow, spawn, Grove on the glass, `ingle` greeter on the paved BIOS and EFI boots, USB HID boot keyboard into house `read` (root or one hub hop), one clock (`sleep`/`time` are ms on EFI too), USB MSC BOT enumerate (READ CAPACITY, glass `msc`). Linux ELF stays later; `grant`/`flush` stay shut.
 
 ## Look
 
@@ -42,7 +42,7 @@ make kindle         # OUR firmware + kernel. No Limine. No OVMF.
 make serial-uefi    # OVMF → our BOOTX64.EFI
 make serial         # Limine ISO (optional crutch)
 make audit          # 256/8/4/1G/1025M/2G/none/wrong/lilac/q35
-make below          # full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle+efi-usb+efi-usb-hub+efi-sleep+efi-glass)
+make below          # full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle+efi-usb+efi-usb-hub+efi-msc+efi-sleep+efi-glass)
 ```
 
 `limine/` is cloned at build time, not vendored. Build artifacts (`fw/cerne-fw.bin`, `kernel/*.bin`, `kernel/BOOTX64.EFI`, `esp/`, `ovmf_vars.fd`, `*.iso`, `target/`) never go in git.
@@ -57,7 +57,7 @@ make below          # full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle+efi
 | `scripts/` | `audit-kindle.sh`, `below.sh`, `romsum.py` (IBM BIOS checksum) |
 | `docs/BOOT.md` | Limine vs UEFI vs our firmware, QEMU flags |
 | `docs/FIRMWARE.md` | ROM contract (RAM map, GDT, FMAP, traps) |
-| `docs/BELOW.md` | below gate + house light G15–G28 |
+| `docs/BELOW.md` | below gate + house light G15–G29 |
 | `docs/HOUSECALLS.md` | Gleam-only house calls (`int 0xE0`, not Linux) |
 | `docs/CAIRN.md` | the cairn (leaves + sparks on disk, `glean`) |
 | `spark/` | Gleam sparks (`tale.asm`, `wick.asm`, `ingle.asm`) |
@@ -73,7 +73,7 @@ make below          # full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle+efi
 
 ## Phases
 
-0 serial hello → **1 memory (kindle well + cup-stack)** → house light (G15–G28) → `grant`/`flush` / Linux ELF → 3 fork/exec → … suite as guest.
+0 serial hello → **1 memory (kindle well + cup-stack)** → house light (G15–G29) → `grant`/`flush` / Linux ELF → 3 fork/exec → … suite as guest.
 
 ## License
 

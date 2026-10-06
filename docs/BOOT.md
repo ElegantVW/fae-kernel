@@ -74,7 +74,9 @@ high Insyde load does not freeze the pre-EBS picture. After the well,
 xHCI is taken (USBLEGSUP, halt, reset, run); glass names the step:
 `xhci`, then `usb kbd` when a HID boot keyboard is queued (root port
 or one hub hop). Miss is `no xhci` (no PCI class `0x0C0330`) or
-`xhci` then `no usb` (HC ran, no keyboard).
+`xhci` then `no usb` (HC ran, no keyboard). After `tick`, `msc` when a
+BOT mass-storage device answers READ CAPACITY (every root port and hub
+child is scanned; HID does not stop the walk). Miss is `no msc`.
 
 ConOut (the laptop panel) carries `cerne-efi`, the Grove sigil, `image` /
 `cairn` / `gop` / `exit`. COM1 carries `fae-kernel` and the well line. OVMF

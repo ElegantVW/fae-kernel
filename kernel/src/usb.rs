@@ -1,4 +1,4 @@
-//! xHCI + HID boot keyboard. Event ring is polled; house `read` drains it.
+//! xHCI + HID boot keyboard + MSC (BOT). Event ring is polled.
 
 use core::cell::UnsafeCell;
 use core::sync::atomic::{compiler_fence, Ordering};
@@ -96,6 +96,12 @@ struct Host {
     kbd_slot: u8,
     kbd_dci: u8,
     kbd_prev: [u8; 6],
+    bulk_out: Ring,
+    bulk_in: Ring,
+    msc_slot: u8,
+    msc_out_dci: u8,
+    msc_in_dci: u8,
+    msc_tag: u32,
 }
 
 struct HostCell(UnsafeCell<Option<Host>>);
@@ -103,6 +109,7 @@ unsafe impl Sync for HostCell {}
 
 static HOST: HostCell = HostCell(UnsafeCell::new(None));
 static mut KBD: bool = false;
+static mut MSC: bool = false;
 static mut FOUND: bool = false;
 
 fn host_mut() -> &'static mut Option<Host> {
@@ -114,6 +121,9 @@ fn r8(a: u64) -> u8 {
 }
 fn r32(a: u64) -> u32 {
     unsafe { (a as *const u32).read_volatile() }
+}
+fn w8(a: u64, v: u8) {
+    unsafe { (a as *mut u8).write_volatile(v) }
 }
 fn w32(a: u64, v: u32) {
     unsafe { (a as *mut u32).write_volatile(v) }
@@ -236,12 +246,13 @@ fn process_events(h: &mut Host) {
                 h.cmd_slot = ctrl >> 24;
             }
             TRB_XFER => {
-                h.xfer_seen = true;
-                h.xfer_code = status >> 24;
                 let slot = (ctrl >> 24) as u8;
                 let epid = ((ctrl >> 16) & 0x1F) as u8;
                 if h.kbd_slot != 0 && slot == h.kbd_slot && epid == h.kbd_dci {
                     hid_report(h);
+                } else {
+                    h.xfer_seen = true;
+                    h.xfer_code = status >> 24;
                 }
             }
             TRB_PORT => {
@@ -429,6 +440,10 @@ fn control(h: &mut Host, slot: u8, setup: [u8; 8], buf: u64, len: u16, din: bool
     let _ = h.slot_ep0[slot as usize].enq(0, 0, (TRB_STATUS << 10) | IOC | sdir);
     h.xfer_seen = false;
     doorbell(h, slot as u32, 1);
+    wait_xfer(h)
+}
+
+fn wait_xfer(h: &mut Host) -> bool {
     let mut n = 0u32;
     while n < SPINS {
         process_events(h);
@@ -652,6 +667,9 @@ fn try_hid(
     tt_slot: u32,
     tt_port: u32,
 ) -> bool {
+    if h.kbd_slot != 0 {
+        return false;
+    }
     if !get_config(h, slot) {
         return false;
     }
@@ -681,6 +699,257 @@ fn try_hid(
     h.kbd_prev = [0; 6];
     let _ = h.intr.enq(h.report, 8, (TRB_NORMAL << 10) | IOC | ISP);
     doorbell(h, slot as u32, h.kbd_dci as u32);
+    true
+}
+
+const CBW_SIG: u32 = 0x4342_5355;
+const CSW_SIG: u32 = 0x5342_5355;
+const MSC_CSW: u64 = 64;
+const MSC_DATA: u64 = 128;
+
+/// iface, out_ep, in_ep, out_max, in_max, cfg_value
+fn parse_msc(h: &Host) -> Option<(u8, u8, u8, u16, u16, u8)> {
+    unsafe {
+        let p = h.data as *const u8;
+        let total = p.add(2).read() as u16 | ((p.add(3).read() as u16) << 8);
+        let cfg_val = p.add(5).read();
+        let mut off = 0u16;
+        let mut iface = 0u8;
+        let mut want = false;
+        let mut out_ep = 0u8;
+        let mut in_ep = 0u8;
+        let mut out_max = 0u16;
+        let mut in_max = 0u16;
+        while off + 2 <= total && (off as usize) < PAGE {
+            let len = p.add(off as usize).read();
+            if len < 2 {
+                break;
+            }
+            let ty = p.add(off as usize + 1).read();
+            if ty == 4 && len >= 9 {
+                iface = p.add(off as usize + 2).read();
+                let class = p.add(off as usize + 5).read();
+                let sub = p.add(off as usize + 6).read();
+                let proto = p.add(off as usize + 7).read();
+                want = class == 8 && sub == 6 && proto == 0x50;
+                out_ep = 0;
+                in_ep = 0;
+            } else if ty == 5 && len >= 7 && want {
+                let addr = p.add(off as usize + 2).read();
+                let attr = p.add(off as usize + 3).read();
+                let maxpkt = p.add(off as usize + 4).read() as u16
+                    | ((p.add(off as usize + 5).read() as u16) << 8);
+                if attr & 3 == 2 {
+                    if addr & 0x80 == 0 {
+                        out_ep = addr;
+                        out_max = maxpkt;
+                    } else {
+                        in_ep = addr;
+                        in_max = maxpkt;
+                    }
+                    if out_ep != 0 && in_ep != 0 {
+                        return Some((iface, out_ep, in_ep, out_max, in_max, cfg_val));
+                    }
+                }
+            }
+            off = off.saturating_add(len as u16);
+        }
+        None
+    }
+}
+
+fn config_bulk(
+    h: &mut Host,
+    slot: u8,
+    root_port: u32,
+    speed: u32,
+    route: u32,
+    tt_slot: u32,
+    tt_port: u32,
+    out_ep: u8,
+    in_ep: u8,
+    out_max: u16,
+    in_max: u16,
+) -> bool {
+    let out_num = (out_ep & 0x0F) as u32;
+    let in_num = (in_ep & 0x0F) as u32;
+    if out_num == 0 || in_num == 0 {
+        return false;
+    }
+    let out_dci = out_num * 2;
+    let in_dci = in_num * 2 + 1;
+    let def_pkt: u16 = if speed >= 3 { 512 } else { 64 };
+    let out_max = if out_max == 0 { def_pkt } else { out_max };
+    let in_max = if in_max == 0 { def_pkt } else { in_max };
+    unsafe {
+        core::ptr::write_bytes(h.in_ctx as *mut u8, 0, PAGE);
+        core::ptr::write_bytes(h.bulk_out.base as *mut u8, 0, PAGE);
+        core::ptr::write_bytes(h.bulk_in.base as *mut u8, 0, PAGE);
+    }
+    h.bulk_out = ring_new(h.bulk_out.base);
+    h.bulk_in = ring_new(h.bulk_in.base);
+    let cs = h.ctxsz as u64;
+    let entries = out_dci.max(in_dci);
+    w32(h.in_ctx + 4, (1 << out_dci) | (1 << in_dci) | 1);
+    fill_slot_ctx(h, speed, root_port, route, tt_slot, tt_port, entries);
+    let ep_out = h.in_ctx + (out_dci as u64 + 1) * cs;
+    w32(ep_out + 4, ((out_max as u32) << 16) | (2 << 3) | (3 << 1));
+    w64(ep_out + 8, h.bulk_out.base | h.bulk_out.c as u64);
+    w32(ep_out + 16, out_max as u32);
+    let ep_in = h.in_ctx + (in_dci as u64 + 1) * cs;
+    w32(ep_in + 4, ((in_max as u32) << 16) | (6 << 3) | (3 << 1));
+    w64(ep_in + 8, h.bulk_in.base | h.bulk_in.c as u64);
+    w32(ep_in + 16, in_max as u32);
+    if !command(
+        h,
+        h.in_ctx,
+        0,
+        (TRB_CONFIG_EP << 10) | ((slot as u32) << 24),
+    ) {
+        return false;
+    }
+    h.msc_out_dci = out_dci as u8;
+    h.msc_in_dci = in_dci as u8;
+    true
+}
+
+fn msc_max_lun(h: &mut Host, slot: u8, iface: u8) {
+    let mut s = [0u8; 8];
+    s[0] = 0xA1;
+    s[1] = 0xFE;
+    s[4] = iface;
+    s[6] = 1;
+    let _ = control(h, slot, s, h.data, 1, true);
+}
+
+fn bulk_out(h: &mut Host, buf: u64, len: u32) -> bool {
+    let slot = h.msc_slot;
+    let dci = h.msc_out_dci;
+    let _ = h.bulk_out.enq(buf, len, (TRB_NORMAL << 10) | IOC);
+    h.xfer_seen = false;
+    doorbell(h, slot as u32, dci as u32);
+    wait_xfer(h)
+}
+
+fn bulk_in(h: &mut Host, buf: u64, len: u32) -> bool {
+    let slot = h.msc_slot;
+    let dci = h.msc_in_dci;
+    let _ = h.bulk_in.enq(buf, len, (TRB_NORMAL << 10) | IOC | ISP);
+    h.xfer_seen = false;
+    doorbell(h, slot as u32, dci as u32);
+    wait_xfer(h)
+}
+
+fn write_cbw(addr: u64, tag: u32, data_len: u32, din: bool, cdb: &[u8]) {
+    unsafe {
+        core::ptr::write_bytes(addr as *mut u8, 0, 31);
+    }
+    w32(addr, CBW_SIG);
+    w32(addr + 4, tag);
+    w32(addr + 8, data_len);
+    w8(addr + 12, if din { 0x80 } else { 0 });
+    w8(addr + 13, 0);
+    let n = cdb.len().min(16);
+    w8(addr + 14, n as u8);
+    let mut i = 0usize;
+    while i < n {
+        w8(addr + 15 + i as u64, cdb[i]);
+        i += 1;
+    }
+}
+
+fn bot(h: &mut Host, cdb: &[u8], buf: u64, data_len: u32, din: bool) -> bool {
+    let tag = h.msc_tag;
+    h.msc_tag = h.msc_tag.wrapping_add(1);
+    if h.msc_tag == 0 {
+        h.msc_tag = 1;
+    }
+    write_cbw(h.data, tag, data_len, din && data_len != 0, cdb);
+    if !bulk_out(h, h.data, 31) {
+        return false;
+    }
+    if data_len != 0 {
+        let ok = if din {
+            bulk_in(h, buf, data_len)
+        } else {
+            bulk_out(h, buf, data_len)
+        };
+        if !ok {
+            return false;
+        }
+    }
+    unsafe {
+        core::ptr::write_bytes((h.data + MSC_CSW) as *mut u8, 0, 16);
+    }
+    if !bulk_in(h, h.data + MSC_CSW, 13) {
+        return false;
+    }
+    let sig = r32(h.data + MSC_CSW);
+    let stag = r32(h.data + MSC_CSW + 4);
+    let status = r8(h.data + MSC_CSW + 12);
+    sig == CSW_SIG && stag == tag && status == 0
+}
+
+fn msc_ready(h: &mut Host) -> bool {
+    let tur = [0u8; 6];
+    let mut n = 0u32;
+    while n < 16 {
+        if bot(h, &tur, 0, 0, false) {
+            return true;
+        }
+        let sense = [0x03, 0, 0, 0, 18, 0];
+        let _ = bot(h, &sense, h.data + MSC_DATA, 18, true);
+        pause();
+        n = n.saturating_add(1);
+    }
+    false
+}
+
+fn try_msc(
+    h: &mut Host,
+    slot: u8,
+    root_port: u32,
+    speed: u32,
+    route: u32,
+    tt_slot: u32,
+    tt_port: u32,
+) -> bool {
+    if h.msc_slot != 0 {
+        return false;
+    }
+    if !get_config(h, slot) {
+        return false;
+    }
+    let Some((iface, out_ep, in_ep, out_max, in_max, cfg)) = parse_msc(h) else {
+        return false;
+    };
+    if !set_config(h, slot, cfg) {
+        return false;
+    }
+    let _ = msc_max_lun(h, slot, iface);
+    if !config_bulk(
+        h,
+        slot,
+        root_port,
+        speed,
+        route,
+        tt_slot,
+        tt_port,
+        out_ep,
+        in_ep,
+        out_max,
+        in_max,
+    ) {
+        return false;
+    }
+    h.msc_slot = slot;
+    h.msc_tag = 1;
+    let _ = msc_ready(h);
+    let cap = [0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    if !bot(h, &cap, h.data + MSC_DATA, 8, true) {
+        h.msc_slot = 0;
+        return false;
+    }
     true
 }
 
@@ -778,14 +1047,16 @@ fn try_hub(
             0
         };
         let tt_port = if tt_slot != 0 { hp as u32 } else { 0 };
-        if address_device(h, child, root_port, speed, hp as u32, tt_slot, tt_port)
-            && try_hid(h, child, root_port, speed, hp as u32, tt_slot, tt_port)
-        {
-            return true;
+        if address_device(h, child, root_port, speed, hp as u32, tt_slot, tt_port) {
+            let _ = try_msc(h, child, root_port, speed, hp as u32, tt_slot, tt_port);
+            let _ = try_hid(h, child, root_port, speed, hp as u32, tt_slot, tt_port);
+        }
+        if h.kbd_slot != 0 && h.msc_slot != 0 {
+            break;
         }
         hp = hp.saturating_add(1);
     }
-    false
+    h.kbd_slot != 0 || h.msc_slot != 0
 }
 
 fn try_tree(
@@ -804,13 +1075,19 @@ fn try_tree(
     if class == 9 {
         return try_hub(h, slot, root_port, speed);
     }
+    let mut ok = false;
+    if try_msc(h, slot, root_port, speed, route, tt_slot, tt_port) {
+        ok = true;
+    }
     if try_hid(h, slot, root_port, speed, route, tt_slot, tt_port) {
-        return true;
+        ok = true;
     }
-    if get_config(h, slot) && is_hub_iface(h) {
-        return try_hub(h, slot, root_port, speed);
+    if h.kbd_slot == 0 || h.msc_slot == 0 {
+        if get_config(h, slot) && is_hub_iface(h) {
+            ok |= try_hub(h, slot, root_port, speed);
+        }
     }
-    false
+    ok
 }
 
 fn power_ports(h: &Host) {
@@ -981,6 +1258,8 @@ fn bringup(bar: u64, len: u64) -> bool {
     let erst = page();
     let in_ctx = page();
     let intr_page = page();
+    let bulk_out_page = page();
+    let bulk_in_page = page();
     let data = page();
     let report = page();
     if scratch > 0 {
@@ -1038,6 +1317,12 @@ fn bringup(bar: u64, len: u64) -> bool {
         kbd_slot: 0,
         kbd_dci: 0,
         kbd_prev: [0; 6],
+        bulk_out: ring_new(bulk_out_page),
+        bulk_in: ring_new(bulk_in_page),
+        msc_slot: 0,
+        msc_out_dci: 0,
+        msc_in_dci: 0,
+        msc_tag: 1,
     };
     power_ports(&h);
     let mut port = 1u32;
@@ -1046,20 +1331,25 @@ fn bringup(bar: u64, len: u64) -> bool {
         if let Some(speed) = reset_port(&h, port) {
             let ty = slot_type_for(&h, speed, port);
             if let Some(slot) = enable_slot(&mut h, ty) {
-                if address_device(&mut h, slot, port, speed, 0, 0, 0)
-                    && try_tree(&mut h, slot, port, speed, 0, 0, 0)
-                {
-                    *host_mut() = Some(h);
-                    unsafe {
-                        core::ptr::addr_of_mut!(KBD).write(true);
-                    }
-                    return true;
+                if address_device(&mut h, slot, port, speed, 0, 0, 0) {
+                    let _ = try_tree(&mut h, slot, port, speed, 0, 0, 0);
                 }
             }
         }
+        if h.kbd_slot != 0 && h.msc_slot != 0 {
+            break;
+        }
         port = port.saturating_add(1);
     }
-    false
+    if h.kbd_slot == 0 && h.msc_slot == 0 {
+        return false;
+    }
+    unsafe {
+        core::ptr::addr_of_mut!(KBD).write(h.kbd_slot != 0);
+        core::ptr::addr_of_mut!(MSC).write(h.msc_slot != 0);
+    }
+    *host_mut() = Some(h);
+    true
 }
 
 /// After the well. Maps the BAR, takes the HC, looks for a boot keyboard.
@@ -1067,6 +1357,7 @@ pub fn init() {
     *host_mut() = None;
     unsafe {
         core::ptr::addr_of_mut!(KBD).write(false);
+        core::ptr::addr_of_mut!(MSC).write(false);
         core::ptr::addr_of_mut!(FOUND).write(false);
     }
     let mut bars = [crate::pci::XhciBar { bar: 0, len: 0 }; 4];
@@ -1092,6 +1383,10 @@ pub fn found() -> bool {
 
 pub fn kbd_live() -> bool {
     unsafe { core::ptr::addr_of!(KBD).read() }
+}
+
+pub fn msc_live() -> bool {
+    unsafe { core::ptr::addr_of!(MSC).read() }
 }
 
 /// Drain the event ring. Safe to call when USB never came up.
