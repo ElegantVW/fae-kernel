@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## usb-msc-g29g (2026-10-06)
+
+- Iron G29f printed `msc`: BOT and READ CAPACITY lived on the Databar. READ(10) now takes LBA 0 (512 B). Glass `fat` when the boot sector is 0x55AA plus `FAT32`/`FAT1`; `no fat` if the read misses or the sector is not FAT. QEMU efi-msc plants a FAT32 signature on the usb-storage image. No WRITE. Stow stays ATA; KINDLOG waits.
+
 ## usb-msc-g29f (2026-10-06)
 
 - Iron G29e printed `no desc`: reset and Address Device lived, GET_DESCRIPTOR did not. EP0 control TDs now match xHCI 1.0 / Linux: TRT IN=3 OUT=2, Setup/Data/Status are separate TDs (no Chain), first TRB cycle held until the rest are written, `mfence` before the doorbell. Average TRB Length 8 on EP0. A failed control resets EP0 and sets the dequeue pointer; GET_DESCRIPTOR retries, then Evaluate 64/8 if PSI was a lie. QEMU hid the swapped TRT and the Chain bit.

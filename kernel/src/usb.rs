@@ -109,6 +109,7 @@ struct Host {
     msc_out_dci: u8,
     msc_in_dci: u8,
     msc_tag: u32,
+    fat: bool,
 }
 
 struct HostCell(UnsafeCell<Option<Host>>);
@@ -117,6 +118,7 @@ unsafe impl Sync for HostCell {}
 static HOST: HostCell = HostCell(UnsafeCell::new(None));
 static mut KBD: bool = false;
 static mut MSC: bool = false;
+static mut FAT: bool = false;
 static mut FOUND: bool = false;
 /// How far bringup got: CCS, reset, address, desc, BOT, capacity.
 static mut MISS: u8 = 0;
@@ -1044,6 +1046,42 @@ fn bot(h: &mut Host, cdb: &[u8], buf: u64, data_len: u32, din: bool) -> bool {
     sig == CSW_SIG && stag == tag && status == 0
 }
 
+fn looks_fat(p: u64) -> bool {
+    if r8(p + 510) != 0x55 || r8(p + 511) != 0xAA {
+        return false;
+    }
+    let fat32 = r8(p + 82) == b'F'
+        && r8(p + 83) == b'A'
+        && r8(p + 84) == b'T'
+        && r8(p + 85) == b'3'
+        && r8(p + 86) == b'2';
+    let fat16 = r8(p + 54) == b'F' && r8(p + 55) == b'A' && r8(p + 56) == b'T';
+    fat32 || fat16
+}
+
+fn msc_read10(h: &mut Host, lba: u32, buf: u64, blocks: u16, blk: u32) -> bool {
+    if blocks == 0 || blk == 0 {
+        return false;
+    }
+    let bytes = blk.saturating_mul(blocks as u32);
+    if bytes == 0 || bytes as usize > PAGE {
+        return false;
+    }
+    let cdb = [
+        0x28,
+        0,
+        (lba >> 24) as u8,
+        (lba >> 16) as u8,
+        (lba >> 8) as u8,
+        lba as u8,
+        0,
+        (blocks >> 8) as u8,
+        blocks as u8,
+        0,
+    ];
+    bot(h, &cdb, buf, bytes, true)
+}
+
 fn msc_ready(h: &mut Host) -> bool {
     let tur = [0u8; 6];
     let mut n = 0u32;
@@ -1105,6 +1143,16 @@ fn try_msc(
     if !bot(h, &cap, h.data + MSC_DATA, 8, true) {
         h.msc_slot = 0;
         return false;
+    }
+    let blk = (r8(h.data + MSC_DATA + 4) as u32) << 24
+        | (r8(h.data + MSC_DATA + 5) as u32) << 16
+        | (r8(h.data + MSC_DATA + 6) as u32) << 8
+        | r8(h.data + MSC_DATA + 7) as u32;
+    if blk == 512
+        && msc_read10(h, 0, h.data + MSC_DATA, 1, 512)
+        && looks_fat(h.data + MSC_DATA)
+    {
+        h.fat = true;
     }
     true
 }
@@ -1549,6 +1597,7 @@ fn bringup(bar: u64, len: u64) -> bool {
         msc_out_dci: 0,
         msc_in_dci: 0,
         msc_tag: 1,
+        fat: false,
     };
     power_ports(&mut h);
     settle(&mut h, 100);
@@ -1564,6 +1613,7 @@ fn bringup(bar: u64, len: u64) -> bool {
     unsafe {
         core::ptr::addr_of_mut!(KBD).write(h.kbd_slot != 0);
         core::ptr::addr_of_mut!(MSC).write(h.msc_slot != 0);
+        core::ptr::addr_of_mut!(FAT).write(h.fat);
     }
     *host_mut() = Some(h);
     true
@@ -1575,6 +1625,7 @@ pub fn init() {
     unsafe {
         core::ptr::addr_of_mut!(KBD).write(false);
         core::ptr::addr_of_mut!(MSC).write(false);
+        core::ptr::addr_of_mut!(FAT).write(false);
         core::ptr::addr_of_mut!(FOUND).write(false);
         core::ptr::addr_of_mut!(MISS).write(0);
     }
@@ -1605,6 +1656,19 @@ pub fn kbd_live() -> bool {
 
 pub fn msc_live() -> bool {
     unsafe { core::ptr::addr_of!(MSC).read() }
+}
+
+pub fn fat_live() -> bool {
+    unsafe { core::ptr::addr_of!(FAT).read() }
+}
+
+/// Glass/serial word after `msc`: `fat` when LBA 0 is a FAT boot sector.
+pub fn fat_line() -> &'static str {
+    if fat_live() {
+        "fat"
+    } else {
+        "no fat"
+    }
 }
 
 /// Glass/serial word after `tick`: `msc` or the step that missed.

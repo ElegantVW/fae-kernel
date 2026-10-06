@@ -242,6 +242,14 @@ unsafe extern "C" fn after_cup() -> ! {
             crate::glass::put_bytes(line.as_ptr(), line.len() as u64);
             crate::glass::put_bytes(b"\n".as_ptr(), 1);
         }
+        if crate::usb::msc_live() {
+            let line = crate::usb::fat_line();
+            serial_print("kindling: ");
+            serial_print(line);
+            serial_print("\n");
+            crate::glass::put_bytes(line.as_ptr(), line.len() as u64);
+            crate::glass::put_bytes(b"\n".as_ptr(), 1);
+        }
     }
     #[cfg(feature = "house-test")]
     crate::house::self_test();

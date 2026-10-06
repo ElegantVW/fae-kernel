@@ -2,7 +2,8 @@
 """Boot EFI Kindling with qemu-xhci + usb-kbd + usb-storage.
 
 Port 1 is the keyboard so a HID-first scan would miss the stick on port 2.
-READ CAPACITY must print `kindling: msc`; Enter still greets through HID.
+READ CAPACITY must print `kindling: msc`; READ(10) LBA 0 a FAT boot sector
+prints `kindling: fat`. Enter still greets through HID.
 """
 from __future__ import annotations
 
@@ -97,7 +98,15 @@ def main() -> int:
     if not EFI.is_file() or not CAIRN.is_file():
         print("FAIL efi-msc (missing BOOTX64.EFI or CAIRN)", file=sys.stderr)
         return 1
-    Path(IMG).write_bytes(b"\x00" * (2 * 1024 * 1024))
+    img = bytearray(2 * 1024 * 1024)
+    img[0:3] = b"\xeb\x58\x90"
+    img[3:11] = b"MSDOS5.0"
+    img[11:13] = (512).to_bytes(2, "little")
+    img[13] = 1
+    img[82:90] = b"FAT32   "
+    img[510] = 0x55
+    img[511] = 0xAA
+    Path(IMG).write_bytes(img)
     shutil.copyfile(vars_src, VARS)
     errf = open(ERR, "wb")
     proc = subprocess.Popen(
@@ -149,6 +158,15 @@ def main() -> int:
             return 1
         if "kindling: msc" not in t:
             print("FAIL efi-msc (no msc — BOT/READ CAPACITY missed)")
+            print(serial[-600:])
+            try:
+                errf.flush()
+                print(Path(ERR).read_text(errors="replace")[-400:])
+            except OSError:
+                pass
+            return 1
+        if "kindling: fat" not in t:
+            print("FAIL efi-msc (no fat — READ(10) LBA 0 missed the boot sector)")
             print(serial[-600:])
             try:
                 errf.flush()

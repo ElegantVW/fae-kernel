@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → loader (off the disk) → Kindling spark. House light (G15–G29f) is on.
+Firmware → loader (off the disk) → Kindling spark. House light (G15–G29g) is on.
 Linux ELF waits on its own gate. This file staying green is still the law.
 
 Run: `make below`  
@@ -47,9 +47,10 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G29d | Iron MSC PORTSC — Linux-neutral writes; miss is rst/addr/desc | efi-msc still `msc`; glass `no rst`/`no addr`/`no desc` | yes |
 | G29e | Iron PORTSC PED — bit 1 is RW1CS; never write 1 after reset | efi-msc still `msc`; PR self-clear on USB2 | yes |
 | G29f | Iron EP0 — xHCI 1.0 control TDs (TRT, no Chain, hold first TRB) | efi-msc still `msc`; glass `no desc` was GET_DESCRIPTOR | yes |
+| G29g | Iron MSC READ(10) — LBA 0 boot sector; glass `fat` / `no fat` | efi-msc `msc` then `fat`; sendkey still greets | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 
 House calls (Gleam-only, not Linux): `docs/HOUSECALLS.md`. First set: `yield` / `exit` / `write(fd 1-2)` / `read(fd 0)` / `sleep` / `time` / `glean` / `stow` / `spawn` + shut `grant` / `flush` (`-EAGAIN`). `write` also paints the glass (VGA / GOP). Happy serial unchanged; `house-test` image prints `kindling: house ok`; `spawn-test` prints `kindling: spawn ok` then the second-leaf. After the well the glass shows the Grove glyph + title. EFI prints Grove on ConOut before touching GOP (IdeaPad has no COM1; Insyde hung inside GOP open).
 
-Out of gate: storage writes and filesystems (FAT/KINDLOG, stow-via-MSC), SMP APs, LA57 well, trap recover, UHCI/EHCI/mice, deep hubs (xHCI HID boot keyboard, one hub hop, and BOT MSC READ CAPACITY are in-gate; 8042 poll stays).
+Out of gate: storage writes and filesystems (FAT/KINDLOG, stow-via-MSC), SMP APs, LA57 well, trap recover, UHCI/EHCI/mice, deep hubs (xHCI HID boot keyboard, one hub hop, BOT MSC READ CAPACITY, and READ(10) of LBA 0 are in-gate; 8042 poll stays).
