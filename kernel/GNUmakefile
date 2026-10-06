@@ -15,7 +15,7 @@ endif
 NONE_DIR := target/$(RUST_TARGET)/$(RUST_PROFILE_SUBDIR)
 UEFI_DIR := target/$(UEFI_TARGET)/$(RUST_PROFILE_SUBDIR)
 
-.PHONY: all limine-elf fw-bin efi efi-leaf clean
+.PHONY: all limine-elf fw-bin efi efi-leaf efi-tale clean
 
 all: limine-elf
 
@@ -76,6 +76,10 @@ efi-leaf:
 	$(CARGO) build --target $(UEFI_TARGET) --bin cerne-efi --features efi,leaf-test --profile $(RUST_PROFILE)
 	cp -v $(UEFI_DIR)/cerne-efi.efi BOOTX64.LEAF.EFI
 
+efi-tale:
+	$(CARGO) build --target $(UEFI_TARGET) --bin cerne-efi --features efi,tale-test --profile $(RUST_PROFILE)
+	cp -v $(UEFI_DIR)/cerne-efi.efi BOOTX64.TALE.EFI
+
 clean:
 	$(CARGO) clean
-	rm -f kernel kernel.fw.bin kernel.trap.bin kernel.house.bin kernel.ring3.bin kernel.reclaim.bin kernel.tale.bin kernel.spawn.bin kernel.ingle.bin kernel.leaf.bin BOOTX64.EFI BOOTX64.LEAF.EFI
+	rm -f kernel kernel.fw.bin kernel.trap.bin kernel.house.bin kernel.ring3.bin kernel.reclaim.bin kernel.tale.bin kernel.spawn.bin kernel.ingle.bin kernel.leaf.bin BOOTX64.EFI BOOTX64.LEAF.EFI BOOTX64.TALE.EFI

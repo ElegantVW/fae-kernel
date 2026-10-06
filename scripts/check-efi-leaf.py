@@ -87,6 +87,9 @@ def plant_fat32(img: bytearray, part_lba: int = 2048, part_secs: int = 2048) -> 
     img[fat + 44 : fat + 48] = (2).to_bytes(4, "little")
     img[fat + 48 : fat + 50] = (1).to_bytes(2, "little")
     img[fat + 50 : fat + 52] = (6).to_bytes(2, "little")
+    img[fat + 66] = 0x29
+    img[fat + 67 : fat + 71] = (0x85C7AA81).to_bytes(4, "little")
+    img[fat + 71 : fat + 82] = b"KINDLING   "
     img[fat + 82 : fat + 90] = b"FAT32   "
     img[fat + 510] = 0x55
     img[fat + 511] = 0xAA

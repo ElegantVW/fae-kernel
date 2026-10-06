@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## stow-volume-g36 (2026-10-07)
+
+- `stow` still takes the cairn first (kind 0). When that name is missing (or there is no cairn) and MSC saw a FAT volume, it re-inks the volume's **root** by the same Gleam name. Exact measure. WRITE(10) each sector, READ(10) compare. The volume serial must be KINDLING `85C7-AA81`. A different volume is `-EPERM`. DMA dest stays the MSC page. Creating or growing files waits.
+- QEMU efi-stow plants LFN `slate` on that serial. Cairn has `tale` + `first-leaf`. First boot `stowed` / `ink holds`; second boot of the same usb-storage image `kept` / `ink holds`. The live Databar is not written.
+
 ## spawn-volume-g35 (2026-10-07)
 
 - `spawn` still takes the cairn first (kind 1). When that name is missing (or there is no cairn) and MSC saw a FAT volume, it gathers from the volume's **root** by the same Gleam name. Cap 64 KiB, exact size, raw `nasm -f bin`. Empty or oversize is `-EPERM`. A truncated spark is a lie. DMA dest stays the MSC page.

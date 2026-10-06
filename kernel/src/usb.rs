@@ -90,6 +90,7 @@ struct FatVol {
     fat_sz: u32,
     root_ent: u16,
     root_clus: u32,
+    vol_id: u32,
 }
 
 struct Host {
@@ -1196,6 +1197,7 @@ fn parse_vol(lba: u32, p: u64) -> Option<FatVol> {
             fat_sz,
             root_ent: 0,
             root_clus,
+            vol_id: r32le(p + 67),
         })
     } else if fat12 {
         None
@@ -1209,6 +1211,7 @@ fn parse_vol(lba: u32, p: u64) -> Option<FatVol> {
             fat_sz: fat_sz16 as u32,
             root_ent,
             root_clus: 0,
+            vol_id: r32le(p + 39),
         })
     } else {
         None
@@ -1289,9 +1292,39 @@ fn msc_read10(h: &mut Host, lba: u32, buf: u64, blocks: u16, blk: u32) -> bool {
     bot(h, &cdb, buf, bytes, true)
 }
 
+/// WRITE(10) of `blocks`. Refuses unless this volume is KINDLING `85C7-AA81`.
+fn msc_write10(h: &mut Host, lba: u32, buf: u64, blocks: u16, blk: u32) -> bool {
+    if h.vol.vol_id != KINDLING_VOL {
+        return false;
+    }
+    if blocks == 0 || blk == 0 {
+        return false;
+    }
+    let bytes = blk.saturating_mul(blocks as u32);
+    if bytes == 0 || bytes as usize > PAGE {
+        return false;
+    }
+    let cdb = [
+        0x2A,
+        0,
+        (lba >> 24) as u8,
+        (lba >> 16) as u8,
+        (lba >> 8) as u8,
+        lba as u8,
+        0,
+        (blocks >> 8) as u8,
+        blocks as u8,
+        0,
+    ];
+    bot(h, &cdb, buf, bytes, false)
+}
+
 const GLEAN_MAX: u64 = 1 << 20;
 const MAX_DIR_SEC: u32 = 256;
 const MAX_FILE_SEC: u32 = 2048;
+/// FAT volume serial the Databar prints as `85C7-AA81`.
+const KINDLING_VOL: u32 = 0x85C7_AA81;
+const MSC_VERIFY: u64 = MSC_DATA + 512;
 const EPERM: u64 = 1;
 const ENOENT: u64 = 2;
 const EIO: u64 = 5;
@@ -1758,6 +1791,111 @@ fn read_chain(h: &mut Host, mut clus: u32, size: u32, buf: u64, len: u64) -> u64
         }
     }
     copied
+}
+
+fn write_chain(h: &mut Host, mut clus: u32, size: u32, buf: u64) -> u64 {
+    let n = size as u64;
+    if n == 0 || n > GLEAN_MAX {
+        return err(EPERM);
+    }
+    if h.vol.vol_id != KINDLING_VOL {
+        return err(EPERM);
+    }
+    if clus < 2 {
+        return err(EIO);
+    }
+    let vol = h.vol;
+    let mut copied = 0u64;
+    let mut secs = 0u32;
+    while copied < n {
+        if clus < 2 {
+            return err(EIO);
+        }
+        let base = clus_lba(&vol, clus);
+        let mut s = 0u8;
+        while s < vol.spc && copied < n {
+            if secs >= MAX_FILE_SEC {
+                return err(EIO);
+            }
+            let lba = base.wrapping_add(s as u32);
+            if !msc_read10(h, lba, h.data + MSC_DATA, 1, 512) {
+                return err(EIO);
+            }
+            let take = (n - copied).min(512);
+            let mut i = 0u64;
+            while i < take {
+                let b = unsafe { ((buf + copied + i) as *const u8).read_volatile() };
+                w8(h.data + MSC_DATA + i, b);
+                i += 1;
+            }
+            let mut k = 0u64;
+            while k < 512 {
+                w8(h.data + MSC_VERIFY + k, r8(h.data + MSC_DATA + k));
+                k += 1;
+            }
+            if !msc_write10(h, lba, h.data + MSC_DATA, 1, 512) {
+                return err(EIO);
+            }
+            if !msc_read10(h, lba, h.data + MSC_DATA, 1, 512) {
+                return err(EIO);
+            }
+            k = 0;
+            while k < 512 {
+                if r8(h.data + MSC_DATA + k) != r8(h.data + MSC_VERIFY + k) {
+                    return err(EIO);
+                }
+                k += 1;
+            }
+            copied += take;
+            secs = secs.saturating_add(1);
+            s = s.saturating_add(1);
+        }
+        if copied >= n {
+            break;
+        }
+        match fat_next(h, &vol, clus) {
+            None => return err(EIO),
+            Some(0) => return err(EIO),
+            Some(next) => clus = next,
+        }
+    }
+    copied
+}
+
+/// Re-ink a named root file. Exact measure. KINDLING `85C7-AA81` only.
+/// WRITE(10) each sector, READ(10) compare. DMA dest stays MSC_DATA.
+pub fn stow_fat(name: &[u8], buf: u64, len: u64) -> u64 {
+    if buf == 0 || len == 0 || len > GLEAN_MAX || name.is_empty() || name.len() > 64 {
+        return err(EPERM);
+    }
+    let Some(h) = host_mut().as_mut() else {
+        return err(ENODEV);
+    };
+    if h.msc_slot == 0 || !h.fat {
+        return err(ENODEV);
+    }
+    if !h.vol_ok {
+        return err(EIO);
+    }
+    if h.vol.vol_id != KINDLING_VOL {
+        return err(EPERM);
+    }
+    match find_root(h, name) {
+        Ok((clus, size)) => {
+            if size as u64 != len {
+                return err(EPERM);
+            }
+            let n = write_chain(h, clus, size, buf);
+            if n != len {
+                if (n as i64) < 0 {
+                    return n;
+                }
+                return err(EIO);
+            }
+            n
+        }
+        Err(e) => err(e),
+    }
 }
 
 fn msc_ready(h: &mut Host) -> bool {
@@ -2262,6 +2400,7 @@ fn bringup(bar: u64, len: u64) -> bool {
             fat_sz: 0,
             root_ent: 0,
             root_clus: 0,
+            vol_id: 0,
         },
     };
     power_ports(&mut h);

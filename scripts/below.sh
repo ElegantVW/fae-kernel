@@ -395,6 +395,10 @@ echo "---- efi-leaf ----"
 make -C kernel efi-leaf >/dev/null
 python3 scripts/check-efi-leaf.py
 
+echo "---- efi-stow ----"
+make -C kernel efi-tale >/dev/null
+python3 scripts/check-efi-stow.py
+
 echo "---- efi-sleep ----"
 python3 scripts/check-efi-sleep.py
 

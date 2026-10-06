@@ -28,7 +28,7 @@ Swift, purposeful, direct — no noise. Unknown refuses, never silently succeeds
 | 6 | `grant` | — | `-EAGAIN` | shut (needs capabilities) |
 | 7 | `flush` | — | `-EAGAIN` | shut (needs Lantern framebuffer) |
 | 8 | `glean` | `rdi` = name, `rsi` = buf, `rdx` = len | bytes or `-errno` | done (cairn leaves first; if that name is missing and a FAT volume is live, the volume's **root** by the same Gleam name, 1–64, no `/`. FAT is the medium — no 8.3 in the house call. Missing → `-ENOENT`; no cairn and no volume → `-ENODEV`; bad xor / bad chain → `-EIO`; bad args → `-EPERM`. Cap 1 MiB. Read only.) |
-| 9 | `stow` | `rdi` = name, `rsi` = buf, `rdx` = len (= `datalen`) | bytes or `-errno` | done (re-ink same measure; sectors + LBA0 rewritten and re-read; `-EIO` on mismatch) |
+| 9 | `stow` | `rdi` = name, `rsi` = buf, `rdx` = len (= `datalen`) | bytes or `-errno` | done (cairn leaves first, exact measure, ATA re-read + LBA0; if that name is missing and a FAT volume is live, the volume's **root** by the same Gleam name — WRITE(10) each sector, READ(10) compare, KINDLING `85C7-AA81` only. Wrong volume / wrong measure → `-EPERM`; missing → `-ENOENT`; no cairn and no volume → `-ENODEV`; verify mismatch → `-EIO`. Ink is for leaves — sparks refuse. Cap 1 MiB. Creating or growing files waits.) |
 | 10 | `read` | `rdi` = fd, `rsi` = buf, `rdx` = len | bytes or `-errno` | done on fd 0 (PS/2 ASCII **or** USB HID boot keyboard); other fd → `-EPERM`; neither 8042 nor xHCI kbd → `-EAGAIN`; blocks until a byte when live. Polls the 8042 data port and the xHCI event ring; `hlt` only when the PIT is armed (EFI has no IRQ0, iron IRQ1 often dies after ExitBootServices) |
 
 Anything else → `-ENOSYS`.
@@ -66,6 +66,11 @@ Feature `ingle-test` looses `ingle`: `kindling: ingle ok`, the spark writes
 `read` until `q`, then `gleam exit 0`.
 Feature `leaf-test` looses `leaf`: `kindling: leaf ok`, the spark gleans
 `LEAF`, writes the page, `read` waits for `q`, then `gleam exit 0`.
+Feature `tale-test` on EFI (`efi-stow`) looses `tale` against a FAT slate:
+`kindling: tale ok`, first boot `stowed` / `ink holds`, second boot of the
+same usb-storage image `kept` / `ink holds` (never `stowed`). The volume
+serial is KINDLING `85C7-AA81`. Cairn has `tale` + `first-leaf`; the slate
+lives on the volume root.
 Happy path (no `*-test` feature) lights `ingle` when the cairn has it
 (`kindling: ingle ok`, then the spark). Missing cairn is a quiet halt.
 The paved serial still prints `cerne-fw / cerne-ld / fae-kernel / still only a spark / well …` first.

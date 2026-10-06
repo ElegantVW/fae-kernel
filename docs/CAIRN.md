@@ -87,7 +87,8 @@ still paints, the glass says `no ingle`. Limine still has no cairn.
 ## Laying down (stow, G2b)
 
 `stow` re-inks a leaf with the same measure (`len` must equal `datalen` —
-growing leaves is later work; ink is for leaves, sparks refuse). The rite:
+growing leaves is later work; ink is for leaves, sparks refuse). Cairn
+first (kind 0). The ATA rite:
 
 1. Verify (KMAP scratch → checksum → walk → leaf xor, as `glean` does).
 2. Copy the bytes + recompute the leaf xor + recompute the cairn sum, all in
@@ -96,6 +97,12 @@ growing leaves is later work; ink is for leaves, sparks refuse). The rite:
    byte-compare (`-EIO` on any mismatch — never trust an unproven write).
 4. Rewrite LBA0 with the new sum (without it the next boot distrusts the
    cairn) and verify that sector too.
+
+When that name is missing (or there is no cairn) and MSC saw a FAT volume,
+`stow` re-inks the volume's **root** by the same Gleam name. Exact measure.
+WRITE(10) each sector, READ(10) compare. The volume serial must be KINDLING
+`85C7-AA81` (Linux vfat UUID). A different volume is `-EPERM`. DMA dest
+stays the MSC page. Creating or growing files waits.
 
 Sparks run from a private pool copy, never in place: a spark's buf lives
 inside its own record, and running in place lets its writes perturb the image
@@ -122,7 +129,7 @@ is the design working.
 - **spark** — an executable leaf (small fire that runs at CPL3).
 - **glean** — house call 8: gather a leaf's bytes (cairn first, then the
   volume root when FAT is live).
-- **stow** — house call 9 (lay bytes down; G2b write path).
+- **stow** — house call 9 (lay bytes down; G2b ATA path, G36 FAT path).
 - **spawn** — house call 5 (named spark, private pages, own cup + CR3;
   cairn first, then the volume root when FAT is live).
 - **tale** — the first spark: speaks a leaf, then exits.
@@ -133,3 +140,4 @@ is the design working.
 - **second-leaf** — `the cup is its own`.
 - **ingle** — the greeter spark, the desktop (G34). Writes its name, reads a line, says the fire is lit, kindles `leaf` once, writes `the light remains` when that spark smoors, waits for `q`. Packed on `make image` with `leaf` and `LEAF`; EFI copies the blob from `EFI/BOOT/CAIRN`. A miss of `leaf` is quiet.
 - **LEAF** — G32/G33 proof leaf. Page `the volume speaks`. Cairn on the paved / BIOS leaf image; FAT root on QEMU efi-msc / efi-leaf / the Databar.
+- **slate** — G19/G36 proof leaf. Ten bytes, wax `wax waits` then ink `ink holds`. Cairn on the BIOS tale image; FAT root (LFN `slate`) on QEMU efi-stow. Volume serial KINDLING `85C7-AA81`.

@@ -298,11 +298,13 @@ fn cairn_xor(base: u64, len: u64) -> u32 {
 
 /// Lay bytes down: re-ink a leaf with the same measure (`rdx` must equal the
 /// leaf's `datalen` — G2b keeps one shape, growing leaves is later work).
-/// Writes the touched cairn sectors back through ATA, re-reads each to prove
-/// it landed, rewrites LBA0 with the new cairn sum so the next boot still
-/// trusts the cairn, and verifies that too. Returns bytes laid or `-errno`
-/// (`EPERM` args/shape/spark, `ENOENT` missing, `ENODEV` no cairn,
-/// `EIO` disk error or verify mismatch). Ink is for leaves — sparks refuse.
+/// Cairn first (kind 0). If that name is missing (or there is no cairn) and
+/// a FAT volume is live, the volume's root by the same Gleam name — WRITE(10)
+/// each sector, READ(10) compare, KINDLING `85C7-AA81` only. Cairn ink still
+/// goes through ATA, re-reads, and rewrites LBA0. Returns bytes laid or
+/// `-errno` (`EPERM` args/shape/wrong volume, `ENOENT` missing, `ENODEV` no
+/// cairn and no volume, `EIO` disk error or verify mismatch). Ink is for
+/// leaves — sparks refuse.
 pub fn stow(name_ptr: u64, buf: u64, len: u64) -> u64 {
     if buf == 0 || len == 0 || len > MAX_DATA {
         return err(EPERM);
@@ -311,16 +313,30 @@ pub fn stow(name_ptr: u64, buf: u64, len: u64) -> u64 {
         Ok(v) => v,
         Err(e) => return err(e),
     };
-    let Some(c) = open() else {
-        return err(ENODEV);
-    };
-    let (da, dl) = match find(&c, &name[..nl], 0) {
-        Ok(v) => v,
-        Err(e) => return err(e),
-    };
-    if len != dl {
-        return err(EPERM);
+    let nm = &name[..nl];
+    match open() {
+        Some(c) => match find(&c, nm, 0) {
+            Ok((da, dl)) => {
+                if len != dl {
+                    return err(EPERM);
+                }
+                stow_cairn(&c, da, dl, buf)
+            }
+            Err(e) if e == EIO => err(EIO),
+            Err(_) => stow_volume(nm, buf, len, true),
+        },
+        None => stow_volume(nm, buf, len, false),
     }
+}
+
+fn stow_volume(name: &[u8], buf: u64, len: u64, had_cairn: bool) -> u64 {
+    if !crate::usb::fat_live() {
+        return if had_cairn { err(ENOENT) } else { err(ENODEV) };
+    }
+    crate::usb::stow_fat(name, buf, len)
+}
+
+fn stow_cairn(c: &Cairn, da: u64, dl: u64, buf: u64) -> u64 {
     // KMAP scratch fields the loader left: cairn_lba + sectors at +20/+24.
     let (clba, csec) = unsafe {
         let k = KMAP_RAM as *const u32;
@@ -628,5 +644,6 @@ pub fn run_tale(cup_top: u64) -> ! {
         }
         i += 1;
     }
+    serial_print("kindling: tale ok\n");
     crate::house::enter_user(dst);
 }
