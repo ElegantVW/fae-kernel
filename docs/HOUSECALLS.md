@@ -9,7 +9,8 @@ Swift, purposeful, direct — no noise. Unknown refuses, never silently succeeds
 - Convention: `rax` = call number, `rdi/rsi/rdx` = args 0–2. Return in `rax`.
 - Return: `0..i64::MAX` ok (bytes / ticks), negative `-errno` honest fail.
   Reuses Linux errno numbers for honesty, not compat: `38 ENOSYS` unknown,
-  `1 EPERM` refused, `11 EAGAIN` not-ready-yet (stub, will grow).
+  `1 EPERM` refused, `11 EAGAIN` not-ready-yet (`grant`/`flush` still shut;
+  nested `spawn` while a spark is already lit).
 - Clobbers `rcx/r11` (like `syscall`); preserves `rdi/rsi/rdx/r8/r9/r10`.
 - Future: `syscall/sysret` for speed. `int 0xE0` first so the gate is simple
   and QEMU-provable. Same numbers survive the upgrade.
@@ -19,11 +20,11 @@ Swift, purposeful, direct — no noise. Unknown refuses, never silently succeeds
 | # | Name | Args | Returns | Today |
 |---|---|---|---|---|
 | 0 | `yield` | — | `0` | done (co-op stub) |
-| 1 | `exit` | `rdi` = code | never | done (`kindling: gleam exit N` + `hlt`) |
+| 1 | `exit` | `rdi` = code | never | done: smoors into the Light (the Light's `spawn` receives this last word in `rax`); with no Light, `kindling: gleam exit N` + `hlt` |
 | 2 | `write` | `rdi` = fd, `rsi` = buf, `rdx` = len | bytes or `-errno` | done on fd 1/2 serial **and** the glass (VGA text / GOP blit); other fd → `-EPERM`; len capped 1 MiB; null buf → `-EPERM` |
 | 3 | `sleep` | `rdi` = ms | `0` | done: TSC deadline after the well (HPET or polled PIT). BIOS may `hlt` on IRQ0. Dead clock returns at once (`no tick`) |
 | 4 | `time` | — | ms | done: milliseconds from calibrated TSC when the clock is live; PIT ticks if TSC never armed; raw `rdtsc` only when both are dark |
-| 5 | `spawn` | `rdi` = name | never on success; `-errno` | done (named cairn spark onto private pages + own cup + own CR3; v0 replaces the light). null/empty/slashy/oversize → `-EPERM`; no cairn → `-ENODEV`; missing → `-ENOENT`. Flat `nasm -f bin` first; ELF later. |
+| 5 | `spawn` | `rdi` = name | last word or `-errno` | done (named cairn spark onto private pages + own cup + own CR3; kindles, then returns the spark's last word when it smoors). One spark at a time — a live Light → `-EAGAIN`. null/empty/slashy/oversize → `-EPERM`; no cairn → `-ENODEV`; missing → `-ENOENT`. Flat `nasm -f bin` first; ELF later. |
 | 6 | `grant` | — | `-EAGAIN` | shut (needs capabilities) |
 | 7 | `flush` | — | `-EAGAIN` | shut (needs Lantern framebuffer) |
 | 8 | `glean` | `rdi` = name, `rsi` = buf, `rdx` = len | bytes or `-errno` | done (cairn leaves; missing → `-ENOENT`, bad args → `-EPERM`, no cairn → `-ENODEV`, bad xor → `-EIO`) |
@@ -54,8 +55,9 @@ may pick RSP), and symbol addresses load via `lea` (there is no push-imm64 —
 Feature `house-test` (like `trap6`): after the well+cup, the kernel knocks
 from ring 0 — direct `dispatch()` + real `int 0xE0` — and prints
 `kindling: house ok`. Null `spawn` must be `-EPERM`; a missing name is
-`-ENODEV` or `-ENOENT`. Feature `spawn-test` then looses `wick` on a
-private CR3: `kindling: spawn ok`, the second-leaf, `gleam exit 0`.
+`-ENODEV` or `-ENOENT`. Feature `spawn-test` then looses `ember` on a
+private CR3: `kindling: spawn ok`, ember kindles `wick`, the second-leaf,
+`stayed`, `gleam exit 0`.
 Feature `ingle-test` looses `ingle`: `kindling: ingle ok`, the spark writes
 `ingle`, `read` waits, Enter yields `the fire is lit` then `gleam exit 0`.
 Happy path (no `*-test` feature) lights `ingle` when the cairn has it

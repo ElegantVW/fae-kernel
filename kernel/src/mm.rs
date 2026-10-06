@@ -287,10 +287,14 @@ pub(crate) fn page_alloc() -> u64 {
 const CUP_PAGES: u64 = 16;
 const GUARD_AND_CUP: usize = 17;
 
+#[derive(Clone, Copy)]
 pub struct SparkRealm {
     pub cr3: u64,
     pub spark: u64,
     pub cup_top: u64,
+    pub spark_len: u64,
+    pub cup_base: u64,
+    pub guard: u64,
 }
 
 fn spawn_fail(n: u64) -> ! {
@@ -526,10 +530,116 @@ pub fn place_spark(spark: u64, spark_len: u64) -> SparkRealm {
         cr3,
         spark,
         cup_top: (cup_base + CUP_PAGES * PAGE) & !0xF,
+        spark_len,
+        cup_base,
+        guard,
     }
 }
 
-#[cfg(feature = "reclaim-test")]
+fn load_cr3(cr3: u64) {
+    unsafe {
+        asm!("mov cr3, {}", in(reg) cr3, options(nostack, preserves_flags));
+    }
+}
+
+unsafe fn free_cloned_pd(k_pd: u64, c_pd: u64) {
+    unsafe {
+        let c = c_pd as *const u64;
+        for j in 0..512 {
+            let cde = c.add(j).read_volatile();
+            if cde & P == 0 || cde & PS != 0 {
+                continue;
+            }
+            let c_pt = pte_phys(cde);
+            let k_pt = if k_pd != 0 {
+                let kde = (k_pd as *const u64).add(j).read_volatile();
+                if kde & P != 0 && kde & PS == 0 {
+                    pte_phys(kde)
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+            if c_pt != k_pt {
+                page_free(c_pt);
+            }
+        }
+    }
+}
+
+unsafe fn free_cloned_pdpt(k_pdpt: u64, c_pdpt: u64) {
+    unsafe {
+        let c = c_pdpt as *const u64;
+        for gb in 0..512 {
+            let cpe = c.add(gb).read_volatile();
+            if cpe & P == 0 || cpe & PS != 0 {
+                continue;
+            }
+            let c_pd = pte_phys(cpe);
+            let k_pd = if k_pdpt != 0 {
+                let kpe = (k_pdpt as *const u64).add(gb).read_volatile();
+                if kpe & P != 0 && kpe & PS == 0 {
+                    pte_phys(kpe)
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+            if c_pd == k_pd {
+                continue;
+            }
+            free_cloned_pd(k_pd, c_pd);
+            page_free(c_pd);
+        }
+    }
+}
+
+/// Pool the spark's tables, spark pages, guard, and cup. Walk unique cloned
+/// tables against the kernel map — shared gb>=3 PDs and identity leaves stay.
+pub fn drop_spark(realm: &SparkRealm) {
+    let kcr3 = unsafe { core::ptr::addr_of!(KERNEL_CR3).read() };
+    if kcr3 == 0 || realm.cr3 == 0 || realm.cr3 == kcr3 {
+        spawn_fail(5);
+    }
+    load_cr3(kcr3);
+    if !canary_ok(realm.cup_base) {
+        serial_print("kindling: the cup was bitten\n");
+        crate::start::hcf();
+    }
+    unsafe {
+        let k_pml4 = kcr3 as *const u64;
+        let c_pml4 = realm.cr3 as *const u64;
+        for i in 0..512 {
+            let ce = c_pml4.add(i).read_volatile();
+            if ce & P == 0 {
+                continue;
+            }
+            let ke = k_pml4.add(i).read_volatile();
+            let c_pdpt = pte_phys(ce);
+            let k_pdpt = if ke & P != 0 { pte_phys(ke) } else { 0 };
+            if c_pdpt == k_pdpt {
+                continue;
+            }
+            free_cloned_pdpt(k_pdpt, c_pdpt);
+            page_free(c_pdpt);
+        }
+        page_free(realm.cr3);
+    }
+    let mut i = GUARD_AND_CUP;
+    while i > 0 {
+        i -= 1;
+        page_free(realm.guard + (i as u64) * PAGE);
+    }
+    let np = realm.spark_len.div_ceil(PAGE);
+    let mut s = np;
+    while s > 0 {
+        s -= 1;
+        page_free(realm.spark + s * PAGE);
+    }
+}
+
 fn page_free(p: u64) {
     if p & (PAGE - 1) != 0 {
         oom();

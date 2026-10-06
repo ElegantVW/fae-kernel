@@ -79,6 +79,7 @@ Do not propose these as new creature names. They are already working.
 | Korda | Vanguarda Arch guest — never a Kindling signer |
 | Pixie, Kur, Murmur, Wisp | Taken familiars / eggs |
 | wick | Second Gleam spark (G20). Firelighting; not a signer |
+| ember | G30 test spark: the live coal that stays while the wick burns. OE *æmerge*. Not Gleed (signer), not Hearth (QEMU + suite greeter) |
 | Seal, Rift, Goblin, Siren, Imp, Magpie, Ether, Scry, Spellbook, Scroll | Suite apps |
 | Aegis, Bulwark, Imbue, Menagerie, Fairy Lantern | Suite / engines |
 | Alchemy, Grimoire, Abacus, Quests, Hourglass, Almanac, Eye, Vault, Reflection, Tome, Zen, Tick, Summon, Purity, Sentinel, Ward | Suite |
@@ -111,7 +112,7 @@ Etymology of the chosen name, verified: English *kindling* is the verbal noun of
 | **Touchwood** | Rotten wood used as tinder | English firecraft | Catches from a spark. Closer to Tinder than to Kindling | High vs Tinder |
 | **Amadou** | Spongy tinder from bracket fungus | European firecraft; *Fomes fomentarius* | True tinder, not kindling | High vs Tinder |
 | **Fomes** | Latin ‘tinder, touchwood’ | Latin; scientific genus of the tinder fungus | Scholarly cousin | High vs Tinder; looks like a C struct name |
-| **Ember** | Small live coal | OE *æmerge* | Afterglow. Good for a shutdown/smoor image | Low as a word; generic |
+| **Ember** | Small live coal | OE *æmerge* | Afterglow. **Struck as a spark** (G30): the coal that stays while the wick burns | Taken — spark. Not Gleed, not Hearth |
 | **Spark** | The first light | English | Already the serial line (‘still only a spark’) and Flint’s job | High vs Flint / existing serial copy |
 | **Kynda** | **coined** from ON *kynda* | Old Norse verb, not a folk creature | Root of *kindle* without taking Kindling | Medium: looks invented; too close if said aloud |
 

@@ -20,6 +20,7 @@ const MAX_DATA: u64 = 1 << 20;
 const EPERM: u64 = 1;
 const ENOENT: u64 = 2;
 const EIO: u64 = 5;
+const EAGAIN: u64 = 11;
 const ENODEV: u64 = 19;
 
 fn err(n: u64) -> u64 {
@@ -393,12 +394,16 @@ fn copy_out(src: u64, len: u64) -> Option<u64> {
 }
 
 /// House call 5: named cairn spark onto private pages, own cup, own CR3.
-/// Never returns on success. v0 replaces the light.
+/// Kindles the spark; when it smoors, this call returns the last word in rax.
+/// One spark at a time — a live Light is `-EAGAIN`.
 pub fn spawn(name_ptr: u64) -> u64 {
     let (name, nl) = match take_name(name_ptr) {
         Ok(v) => v,
         Err(e) => return err(e),
     };
+    if crate::house::light_live() {
+        return err(EAGAIN);
+    }
     let Some(c) = open() else {
         return err(ENODEV);
     };
@@ -413,11 +418,12 @@ pub fn spawn(name_ptr: u64) -> u64 {
         spawn_fail(4);
     };
     let realm = crate::mm::place_spark(dst, len);
-    crate::house::enter_user_in(realm.spark, realm.cup_top, realm.cr3);
+    crate::house::kindle(realm);
+    0
 }
 
-/// Loose `wick`: verify, copy, private CR3 + cup, enter at CPL3.
-/// Never returns.
+/// Loose `ember`: verify, copy, private CR3 + cup, enter at CPL3.
+/// Ember kindles `wick`; the Light stays. Never returns (ember `exit`s).
 #[cfg(feature = "spawn-test")]
 pub fn run_spawn(cup_top: u64) -> ! {
     crate::gdt::set_kernel_stack(cup_top);
@@ -425,7 +431,7 @@ pub fn run_spawn(cup_top: u64) -> ! {
         let Some(c) = open() else {
             spawn_fail(1);
         };
-        match find(&c, b"wick", 1) {
+        match find(&c, b"ember", 1) {
             Ok(v) => v,
             Err(_) => spawn_fail(2),
         }

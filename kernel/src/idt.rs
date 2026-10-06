@@ -60,9 +60,21 @@ macro_rules! vecs {
             "hlt",
             "jmp trap_common",
             // House gate: `int 0xE0`. Entry: rax=n rdi=a0 rsi=a1 rdx=a2.
-            // Shuffle to SysV (rdi,rsi,rdx,rcx), keep rax for the return.
+            // Callee-saved first so spawn can copy the Light (the coal)
+            // before the child reuses RSP0. Shuffle to SysV, then
+            // house_after(frame=rsp, ret=rax) kindles or smoors; else iretq.
+            // Frame at house_after (rsp), qword slots:
+            //   0 r11, 1 r10, 2 r9, 3 r8, 4 rcx, 5 rdx, 6 rsi, 7 rdi,
+            //   8 r15, 9 r14, 10 r13, 11 r12, 12 rbp, 13 rbx,
+            //   14 rip, 15 cs, 16 rflags, 17 rsp, 18 ss.
             ".global vec_house\n",
             "vec_house:\n",
+            "push rbx\n",
+            "push rbp\n",
+            "push r12\n",
+            "push r13\n",
+            "push r14\n",
+            "push r15\n",
             "push rdi\n",
             "push rsi\n",
             "push rdx\n",
@@ -76,6 +88,9 @@ macro_rules! vecs {
             "mov rsi, rdi\n",
             "mov rdi, rax\n",
             "call house_entry\n",
+            "mov rsi, rax\n",
+            "mov rdi, rsp\n",
+            "call house_after\n",
             "pop r11\n",
             "pop r10\n",
             "pop r9\n",
@@ -84,6 +99,12 @@ macro_rules! vecs {
             "pop rdx\n",
             "pop rsi\n",
             "pop rdi\n",
+            "pop r15\n",
+            "pop r14\n",
+            "pop r13\n",
+            "pop r12\n",
+            "pop rbp\n",
+            "pop rbx\n",
             "iretq\n",
             // PIT tick: IRQ0. Preserve everything, count, return.
             ".global vec_timer\n",

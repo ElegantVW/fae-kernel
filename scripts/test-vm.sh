@@ -123,13 +123,15 @@ tale)
     ;;
 spawn)
     nasm -f bin -o spark/wick.bin spark/wick.asm
+    nasm -f bin -o spark/ember.bin spark/ember.asm
     make -C kernel spawn-bin >/dev/null
     python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
         --kernel kernel/kernel.spawn.bin --out kindling-spawn.img \
-        --spark wick=spark/wick.bin --leaf second-leaf=spark/second-leaf.txt >/dev/null
+        --spark ember=spark/ember.bin --spark wick=spark/wick.bin \
+        --leaf second-leaf=spark/second-leaf.txt >/dev/null
     run_case spawn kindling-spawn.img \
         "kindling: house ok" "kindling: spawn ok" \
-        "the cup is its own" "kindling: gleam exit 0"
+        "the cup is its own" "stayed" "kindling: gleam exit 0"
     ;;
 ingle)
     nasm -f bin -o spark/ingle.bin spark/ingle.asm

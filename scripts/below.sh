@@ -163,10 +163,12 @@ python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
 
 echo "---- spawn ----"
 nasm -f bin -o spark/wick.bin spark/wick.asm
+nasm -f bin -o spark/ember.bin spark/ember.asm
 make -C kernel spawn-bin
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
   --kernel kernel/kernel.spawn.bin --out kindling-spawn.img \
-  --spark wick=spark/wick.bin --leaf second-leaf=spark/second-leaf.txt
+  --spark ember=spark/ember.bin --spark wick=spark/wick.bin \
+  --leaf second-leaf=spark/second-leaf.txt
 got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
   -bios "$FW" -drive if=ide,format=raw,file=kindling-spawn.img \
   -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
@@ -177,6 +179,11 @@ printf '%s\n' "$got" | grep -F -q "kindling: spawn ok" || {
 }
 printf '%s\n' "$got" | grep -F -q "the cup is its own" || {
   echo "FAIL spawn (no second-leaf)"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "stayed" || {
+  echo "FAIL spawn (no stayed)"
   echo "$got" | tail -12
   exit 1
 }

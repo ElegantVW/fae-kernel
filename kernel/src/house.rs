@@ -1,9 +1,10 @@
 //! House calls — Gleam's own gate (`int 0xE0`). Not Linux.
 //! Numbers survive the future `syscall/sysret` upgrade.
 
-#[cfg(feature = "house-test")]
 use core::arch::asm;
+use core::ptr::{addr_of, addr_of_mut};
 
+use crate::mm::SparkRealm;
 use crate::start::{hcf, serial_print, serial_u64};
 
 pub const YIELD: u64 = 0;
@@ -50,10 +51,17 @@ pub fn dispatch(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
     match n {
         YIELD => 0,
         EXIT => {
-            serial_print("kindling: gleam exit ");
-            serial_u64(a0);
-            serial_print("\n");
-            hcf();
+            if light_live() {
+                let realm = take_child();
+                crate::mm::drop_spark(&realm);
+                smoor(a0);
+                0
+            } else {
+                serial_print("kindling: gleam exit ");
+                serial_u64(a0);
+                serial_print("\n");
+                hcf();
+            }
         }
         WRITE => {
             if a0 == 1 || a0 == 2 {
@@ -92,6 +100,238 @@ pub fn dispatch(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
 #[unsafe(no_mangle)]
 pub extern "sysv64" fn house_entry(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
     dispatch(n, a0, a1, a2)
+}
+
+/// After `house_entry`: kindle a waiting spark, smoor into the Light, or
+/// hand `ret` back so `vec_house` can iretq. `frame` is rsp at the 19-qword
+/// house frame (see `idt.rs`).
+#[unsafe(no_mangle)]
+pub extern "sysv64" fn house_after(frame: u64, ret: u64) -> u64 {
+    let sw = unsafe { addr_of!(SWITCH).read_volatile() };
+    match sw {
+        1 => {
+            save_light(frame);
+            unsafe { addr_of_mut!(SWITCH).write_volatile(0) };
+            house_kindle_enter();
+        }
+        2 => {
+            unsafe { addr_of_mut!(SWITCH).write_volatile(0) };
+            house_smoor_enter();
+        }
+        _ => ret,
+    }
+}
+
+// --- G30: one Light. Kindle a spark; when it smoors, spawn returns. ---
+
+const SWITCH_KINDLE: u64 = 1;
+const SWITCH_SMOOR: u64 = 2;
+
+// House frame slots (qword), matching vec_house after `call house_entry`.
+const FR_R11: usize = 0;
+const FR_R10: usize = 1;
+const FR_R9: usize = 2;
+const FR_R8: usize = 3;
+const FR_RCX: usize = 4;
+const FR_RDX: usize = 5;
+const FR_RSI: usize = 6;
+const FR_RDI: usize = 7;
+const FR_R15: usize = 8;
+const FR_R14: usize = 9;
+const FR_R13: usize = 10;
+const FR_R12: usize = 11;
+const FR_RBP: usize = 12;
+const FR_RBX: usize = 13;
+const FR_RIP: usize = 14;
+const FR_CS: usize = 15;
+const FR_RFLAGS: usize = 16;
+const FR_RSP: usize = 17;
+const FR_SS: usize = 18;
+
+#[repr(C)]
+struct Light {
+    live: u64,
+    word: u64,
+    cr3: u64,
+    rbx: u64,
+    rbp: u64,
+    r12: u64,
+    r13: u64,
+    r14: u64,
+    r15: u64,
+    r11: u64,
+    r10: u64,
+    r9: u64,
+    r8: u64,
+    rcx: u64,
+    rdx: u64,
+    rsi: u64,
+    rdi: u64,
+    rip: u64,
+    cs: u64,
+    rflags: u64,
+    rsp: u64,
+    ss: u64,
+    child: SparkRealm,
+}
+
+static mut LIGHT: Light = Light {
+    live: 0,
+    word: 0,
+    cr3: 0,
+    rbx: 0,
+    rbp: 0,
+    r12: 0,
+    r13: 0,
+    r14: 0,
+    r15: 0,
+    r11: 0,
+    r10: 0,
+    r9: 0,
+    r8: 0,
+    rcx: 0,
+    rdx: 0,
+    rsi: 0,
+    rdi: 0,
+    rip: 0,
+    cs: 0,
+    rflags: 0,
+    rsp: 0,
+    ss: 0,
+    child: SparkRealm {
+        cr3: 0,
+        spark: 0,
+        cup_top: 0,
+        spark_len: 0,
+        cup_base: 0,
+        guard: 0,
+    },
+};
+
+static mut SWITCH: u64 = 0;
+
+pub fn light_live() -> bool {
+    unsafe { addr_of!(LIGHT).read_volatile().live != 0 }
+}
+
+/// Kindling will iretq into `realm` after this house call returns.
+pub fn kindle(realm: SparkRealm) {
+    unsafe {
+        let l = addr_of_mut!(LIGHT);
+        (*l).child = realm;
+        (*l).live = 1;
+        addr_of_mut!(SWITCH).write_volatile(SWITCH_KINDLE);
+    }
+}
+
+fn take_child() -> SparkRealm {
+    unsafe { addr_of!(LIGHT).read_volatile().child }
+}
+
+/// The Light's spawn receives `word` in rax.
+pub fn smoor(word: u64) {
+    unsafe {
+        let l = addr_of_mut!(LIGHT);
+        (*l).word = word;
+        (*l).live = 0;
+        addr_of_mut!(SWITCH).write_volatile(SWITCH_SMOOR);
+    }
+}
+
+fn save_light(frame: u64) {
+    unsafe {
+        let f = frame as *const u64;
+        let l = addr_of_mut!(LIGHT);
+        (*l).r11 = f.add(FR_R11).read();
+        (*l).r10 = f.add(FR_R10).read();
+        (*l).r9 = f.add(FR_R9).read();
+        (*l).r8 = f.add(FR_R8).read();
+        (*l).rcx = f.add(FR_RCX).read();
+        (*l).rdx = f.add(FR_RDX).read();
+        (*l).rsi = f.add(FR_RSI).read();
+        (*l).rdi = f.add(FR_RDI).read();
+        (*l).r15 = f.add(FR_R15).read();
+        (*l).r14 = f.add(FR_R14).read();
+        (*l).r13 = f.add(FR_R13).read();
+        (*l).r12 = f.add(FR_R12).read();
+        (*l).rbp = f.add(FR_RBP).read();
+        (*l).rbx = f.add(FR_RBX).read();
+        (*l).rip = f.add(FR_RIP).read();
+        (*l).cs = f.add(FR_CS).read();
+        (*l).rflags = f.add(FR_RFLAGS).read();
+        (*l).rsp = f.add(FR_RSP).read();
+        (*l).ss = f.add(FR_SS).read();
+        let cr3: u64;
+        asm!("mov {}, cr3", out(reg) cr3, options(nostack, preserves_flags));
+        (*l).cr3 = cr3;
+    }
+}
+
+fn house_kindle_enter() -> ! {
+    let r = unsafe { addr_of!(LIGHT).read_volatile().child };
+    enter_user_in(r.spark, r.cup_top, r.cr3);
+}
+
+fn house_smoor_enter() -> ! {
+    let p = addr_of!(LIGHT) as u64;
+    unsafe {
+        asm!(
+            "mov r9, [r8 + {off_cr3}]",
+            "mov cr3, r9",
+            "mov ax, 0x23",
+            "mov ds, ax",
+            "mov es, ax",
+            "mov rbx, [r8 + {off_rbx}]",
+            "mov rbp, [r8 + {off_rbp}]",
+            "mov r12, [r8 + {off_r12}]",
+            "mov r13, [r8 + {off_r13}]",
+            "mov r14, [r8 + {off_r14}]",
+            "mov r15, [r8 + {off_r15}]",
+            "mov r9, [r8 + {off_ss}]",
+            "push r9",
+            "mov r9, [r8 + {off_rsp}]",
+            "push r9",
+            "mov r9, [r8 + {off_rflags}]",
+            "push r9",
+            "mov r9, [r8 + {off_cs}]",
+            "push r9",
+            "mov r9, [r8 + {off_rip}]",
+            "push r9",
+            "mov rax, [r8 + {off_word}]",
+            "mov r11, [r8 + {off_r11}]",
+            "mov r10, [r8 + {off_r10}]",
+            "mov r9, [r8 + {off_r9}]",
+            "mov rcx, [r8 + {off_rcx}]",
+            "mov rdx, [r8 + {off_rdx}]",
+            "mov rsi, [r8 + {off_rsi}]",
+            "mov rdi, [r8 + {off_rdi}]",
+            "mov r8, [r8 + {off_r8}]",
+            "iretq",
+            in("r8") p,
+            off_cr3 = const 16u64,
+            off_word = const 8u64,
+            off_rbx = const 24u64,
+            off_rbp = const 32u64,
+            off_r12 = const 40u64,
+            off_r13 = const 48u64,
+            off_r14 = const 56u64,
+            off_r15 = const 64u64,
+            off_r11 = const 72u64,
+            off_r10 = const 80u64,
+            off_r9 = const 88u64,
+            off_r8 = const 96u64,
+            off_rcx = const 104u64,
+            off_rdx = const 112u64,
+            off_rsi = const 120u64,
+            off_rdi = const 128u64,
+            off_rip = const 136u64,
+            off_cs = const 144u64,
+            off_rflags = const 152u64,
+            off_rsp = const 160u64,
+            off_ss = const 168u64,
+            options(noreturn),
+        );
+    }
 }
 
 /// Ring-0 self-test: direct dispatch + a real `int 0xE0` knock.

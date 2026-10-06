@@ -97,8 +97,9 @@ the next boot verifies — the floor must be its own (64 KiB law, contiguity
 asserted, `tale FAIL scattered` / `spawn FAIL 4` otherwise). `spawn` (house
 call 5) copies the named spark the same way, then clones the kernel map onto
 a new CR3, strips U/S from kernel leaves, and grants user only the spark and
-a 64 KiB cup (one guard page not-present). v0 replaces the light — it does
-not return to the caller. ELF is a format later, not a Linux ABI.
+a 64 KiB cup (one guard page not-present). One Light: kindle the spark; when
+it smoors, `spawn` returns the last word. Nested spawn is `-EAGAIN`. ELF is
+a format later, not a Linux ABI.
 
 A panic mid-stow leaves the disk half-inked (sector new, KMAP old) — the
 next boot then refuses `no-cairn` instead of reading corrupt. That refusal
@@ -115,5 +116,6 @@ is the design working.
 - **tale** — the first spark: speaks a leaf, then exits.
 - **first-leaf** — the first leaf, packed at cast time.
 - **wick** — the second spark: tells `second-leaf` from its own cup, then exits.
+- **ember** — the live coal (G30): kindles `wick`, writes `stayed`, exits with wick's last word. Packed on the spawn-test image.
 - **second-leaf** — `the cup is its own`.
 - **ingle** — the greeter spark: writes its name, reads a line, says the fire is lit. Packed on `make image`; EFI copies it from `EFI/BOOT/CAIRN`.

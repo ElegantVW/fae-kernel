@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## light-g30 (2026-10-06)
+
+- `spawn` kindles one named spark and returns its last word when that spark `exit`s. One kernel Light holds the house frame; the child reuses the well-cup; `drop_spark` pools the cloned tables, spark pages, guard, and cup. Nested spawn is `-EAGAIN`. No pid, no wait, no table.
+- Test spark `ember` (OE *æmerge*) kindles `wick`, writes `stayed`, `exit`s with wick's word. `spawn-test` lights ember. Serial: `kindling: spawn ok` / `the cup is its own` / `stayed` / `kindling: gleam exit 0`. Paved `ingle` still `hlt`s (no Light).
+
 ## usb-msc-g29h (2026-10-06)
 
 - Iron G29g printed `no fat` after `msc`. READ(10) of 512 B lived; LBA 0 is the Databar MBR (`0x55AA`, type `0x0c` at start 2048). `probe_fat` reads LBA 0, then each FAT-type MBR partition, then GPT entries if the protective type is `0xEE`. Superfloppy LBA 0 still counts. QEMU efi-msc is now MBR + FAT32 at 2048, matching iron.
