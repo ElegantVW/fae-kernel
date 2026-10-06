@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → loader (off the disk) → Kindling spark. House light (G15–G27b) is on.
+Firmware → loader (off the disk) → Kindling spark. House light (G15–G28) is on.
 Linux ELF waits on its own gate. This file staying green is still the law.
 
 Run: `make below`  
@@ -40,6 +40,7 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G26 | Post-well glass — map PE+GOP before CR3; `kindling` on show(); efi-glass + stick | efi-glass `xp`; stick `cmp` | yes |
 | G27 | USB HID boot keyboard — xHCI poll into house `read`; 8042 stays | efi-usb `usb kbd` then sendkey; efi-ingle still greets | yes |
 | G27b | Iron xHCI — PPC, protocol slot type, one hub hop; glass `xhci` / `usb kbd` / `no usb` | efi-usb root kbd; efi-usb-hub one hop; efi-ingle still greets | yes |
+| G28 | One clock — HPET or polled PIT, TSC ms; `sleep`/`time` on EFI | efi-sleep `tick` + `efi slept`; ring3 `init slept` | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 

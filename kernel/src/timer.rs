@@ -1,6 +1,9 @@
-//! PIT timer (BIOS path only): 100 Hz ticks so `sleep`/`time` mean ms.
-//! EFI/crutch paths never call [`init`] — there `sleep` is a stub and
-//! `time` falls back to raw `rdtsc`. The gate stays honest either way.
+//! One clock: `sleep` / `time` are milliseconds on every path that arms.
+//!
+//! BIOS still programs the PIT at 100 Hz ([`init`], pre-well) so IRQ0 +
+//! `hlt` can wait. EFI never calls [`init`]. After the well, [`arm`]
+//! takes HPET (or a polled PIT) and calibrates TSC; then `ms()` is real
+//! ms and `sleep` waits. A dead source is `no tick` — never a silent sleep.
 //!
 //! Virtual-wire (LAPIC LINT0 as ExtINT) is programmed in [`wire`], post-well:
 //! the APIC window only exists in our own tables, and `init` runs on the
@@ -13,6 +16,9 @@ use core::arch::asm;
 static mut TICKS: u64 = 0;
 static mut ACTIVE: bool = false;
 static mut PIT: bool = false;
+static mut CLOCK: bool = false;
+static mut TSC0: u64 = 0;
+static mut TSC_PER_MS: u64 = 0;
 
 /// Readback of virtual-wire programming, for the self-test (never silent).
 #[allow(dead_code)]
@@ -23,8 +29,11 @@ static mut LINT_SEEN: u32 = 0;
 static mut APIC_BASE_SEEN: u64 = 0;
 
 const LAPIC: u64 = 0xFEE0_0000;
+const HPET: u64 = 0xFED0_0000;
 const SVR_OFF: usize = 0xF0 / 4;
 const LINT0_OFF: usize = 0x350 / 4;
+const CAL_SPINS: u32 = 200_000_000;
+const PIT_10MS: u16 = 11932;
 
 #[inline]
 unsafe fn outb(port: u16, val: u8) {
@@ -70,6 +79,152 @@ pub fn init() {
 /// `read` would never wake — poll + `pause` there instead.
 pub fn pit_armed() -> bool {
     unsafe { core::ptr::addr_of!(PIT).read() }
+}
+
+fn r64(a: u64) -> u64 {
+    unsafe { (a as *const u64).read_volatile() }
+}
+
+fn w64(a: u64, v: u64) {
+    unsafe { (a as *mut u64).write_volatile(v) }
+}
+
+fn tsc_sane(per_ms: u64) -> bool {
+    (10_000..50_000_000).contains(&per_ms)
+}
+
+fn adopt(per_ms: u64) -> bool {
+    if !tsc_sane(per_ms) {
+        return false;
+    }
+    unsafe {
+        core::ptr::addr_of_mut!(TSC_PER_MS).write(per_ms);
+        core::ptr::addr_of_mut!(TSC0).write(rdtsc());
+        core::ptr::addr_of_mut!(CLOCK).write(true);
+    }
+    true
+}
+
+fn hpet_live() -> Option<u64> {
+    if !crate::mm::ap_mapped() {
+        crate::mm::map_uc(HPET, 0x400);
+    }
+    let cap = r64(HPET);
+    let period = cap >> 32;
+    let rev = cap & 0xFF;
+    if rev == 0 || !(1_000_000..=100_000_000).contains(&period) {
+        return None;
+    }
+    let cfg = r64(HPET + 0x10);
+    w64(HPET + 0x10, cfg | 1);
+    let c0 = r64(HPET + 0xF0);
+    let mut n = 0u32;
+    while n < 200_000 {
+        if r64(HPET + 0xF0) != c0 {
+            return Some(period);
+        }
+        n = n.saturating_add(1);
+        core::hint::spin_loop();
+    }
+    None
+}
+
+fn cal_hpet(period: u64) -> bool {
+    let want = 10_000_000_000_000u64 / period;
+    if want == 0 {
+        return false;
+    }
+    let t0 = rdtsc();
+    let c0 = r64(HPET + 0xF0);
+    let mut n = 0u32;
+    while n < CAL_SPINS {
+        if r64(HPET + 0xF0).wrapping_sub(c0) >= want {
+            let dt = rdtsc().wrapping_sub(t0);
+            return adopt(dt / 10);
+        }
+        n = n.saturating_add(1);
+        core::hint::spin_loop();
+    }
+    false
+}
+
+fn cal_irq() -> bool {
+    if !pit_armed() || !active() {
+        return false;
+    }
+    unsafe {
+        asm!("sti", options(nomem, nostack, preserves_flags));
+    }
+    let k0 = ticks();
+    let t0 = rdtsc();
+    let mut n = 0u32;
+    while ticks().wrapping_sub(k0) < 1 {
+        n = n.saturating_add(1);
+        if n >= CAL_SPINS {
+            return false;
+        }
+        unsafe {
+            asm!("hlt", options(nomem, nostack, preserves_flags));
+        }
+    }
+    let dt = rdtsc().wrapping_sub(t0);
+    adopt(dt / 10)
+}
+
+fn pit_latch() -> u16 {
+    unsafe {
+        outb(0x43, 0x00);
+        let lo = inb(0x40) as u16;
+        let hi = inb(0x40) as u16;
+        lo | (hi << 8)
+    }
+}
+
+fn cal_pit_poll() -> bool {
+    unsafe {
+        outb(0x43, 0x30);
+        outb(0x40, (PIT_10MS & 0xFF) as u8);
+        outb(0x40, (PIT_10MS >> 8) as u8);
+    }
+    let t0 = rdtsc();
+    let mut saw = false;
+    let mut n = 0u32;
+    while n < CAL_SPINS {
+        let c = pit_latch();
+        if c != 0 && c <= PIT_10MS {
+            saw = true;
+        }
+        if saw && (c == 0 || c > PIT_10MS) {
+            let dt = rdtsc().wrapping_sub(t0);
+            return adopt(dt / 10);
+        }
+        n = n.saturating_add(1);
+        core::hint::spin_loop();
+    }
+    false
+}
+
+/// Post-well: HPET or polled PIT, then TSC so `time`/`sleep` are ms.
+pub fn arm() {
+    unsafe {
+        core::ptr::addr_of_mut!(CLOCK).write(false);
+        core::ptr::addr_of_mut!(TSC_PER_MS).write(0);
+    }
+    if let Some(period) = hpet_live() {
+        if cal_hpet(period) {
+            return;
+        }
+    }
+    if cal_irq() {
+        return;
+    }
+    if !pit_armed() {
+        let _ = cal_pit_poll();
+    }
+}
+
+pub fn clock_live() -> bool {
+    unsafe { core::ptr::addr_of!(CLOCK).read() }
 }
 
 /// Virtual-wire + ACTIVE. Call post-well (after_cup): enable the LAPIC,
@@ -137,17 +292,46 @@ pub fn ticks() -> u64 {
     unsafe { core::ptr::addr_of!(TICKS).read_volatile() }
 }
 
-/// ms since timer start (BIOS) or raw ticks (EFI/crutch fallback).
+/// Milliseconds since [`arm`], when the clock is live. BIOS IRQ ticks if
+/// the TSC never calibrated. Raw `rdtsc` only when both are dark.
 pub fn ms() -> u64 {
-    if active() {
+    let per = unsafe { core::ptr::addr_of!(TSC_PER_MS).read() };
+    if clock_live() && per != 0 {
+        let t0 = unsafe { core::ptr::addr_of!(TSC0).read() };
+        rdtsc().wrapping_sub(t0) / per
+    } else if active() {
         ticks().wrapping_mul(10)
     } else {
         rdtsc()
     }
 }
 
-/// Block ~ms (BIOS). Elsewhere returns at once — honest stub.
+/// Block ~ms when the clock is live. IRQ0 `hlt` on BIOS; TSC `pause` on EFI.
+/// Dead clock returns at once.
 pub fn sleep_ms(ms: u64) {
+    if ms == 0 {
+        return;
+    }
+    let per = unsafe { core::ptr::addr_of!(TSC_PER_MS).read() };
+    if clock_live() && per != 0 {
+        let start = rdtsc();
+        let delta = ms.saturating_mul(per);
+        if pit_armed() && active() {
+            unsafe {
+                asm!("sti", options(nomem, nostack, preserves_flags));
+            }
+        }
+        while rdtsc().wrapping_sub(start) < delta {
+            if pit_armed() && active() {
+                unsafe {
+                    asm!("hlt", options(nomem, nostack, preserves_flags));
+                }
+            } else {
+                core::hint::spin_loop();
+            }
+        }
+        return;
+    }
     if !active() {
         return;
     }

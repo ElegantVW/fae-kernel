@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## clock-g28 (2026-10-06)
+
+- House `sleep`/`time` were path-dependent: PIT ms on BIOS, a no-op + raw `rdtsc` on EFI. After the well, Kindling maps HPET (`0xFED00000` in the `0xFEC00000` 2M UC leaf beside the LAPIC), else polls the PIT, calibrates TSC, and `time` is milliseconds on every path that arms. Glass `tick` / `no tick`. EFI proves `sleep 50` with `kindling: efi slept`. `make below` += efi-sleep. BIOS `init slept` stays.
+
 ## usb-hub-g27b (2026-10-06)
 
 - Iron G27 printed `no usb` then `ingle`. QEMU hid it: `qemu-xhci` has no PPC and the kbd sits on a root port. Intel wants PP on every port before CCS, Enable Slot type from Supported Protocol (xECP **Next** is a DWORD offset from this cap, not the BAR), and the IdeaPad keys often hang behind one USB2 hub. Glass now says `xhci` then `usb kbd` or `no usb` (`no xhci` if PCI missed). `map_uc` may replace a present WB 2M leaf. HID match is class 3 proto 1. OVMF + hub can park the PE at the top of a 256M bowl; the bump stays at 4 MiB when after-image has no cup. `make below` += efi-usb-hub (`usb-hub` on `xhci.0` port 1, `usb-kbd` on `1.1`).

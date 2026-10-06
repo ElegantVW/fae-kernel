@@ -212,13 +212,13 @@ pub unsafe fn prepare_well(hint: Hint) -> Well {
         stack.cast::<u64>().write_volatile(canary);
     }
     let top = ((stack as u64) + STACK_MANA) & !0xF;
-    // LAPIC window for virtual-wire (BIOS timer path): one 2M UC page at
-    // 0xFEE00000, supervisor-only (no US — CPL3 touching it faults, good).
-    // Only when PDPT[3] is free (≤3 GiB; the gates never exceed 1 GiB).
-    // Beyond 3 GiB the timer stays a stub — honestly degraded, not silent.
+    // MMIO window in PDPT[3] (≤3 GiB wells): 2M UC at 0xFEC00000 (IOAPIC
+    // + HPET at 0xFED00000) and 0xFEE00000 (LAPIC). Supervisor-only.
+    // Beyond 3 GiB the clock stays a stub — honestly degraded, not silent.
     let ap_mapped = unsafe {
         if (*pdpt)[3] == 0 {
             let ap_pd = bump.table();
+            (*ap_pd)[502] = 0xFEC0_0000 | P | RW | PCD | PWT | PS;
             (*ap_pd)[503] = 0xFEE0_0000 | P | RW | PCD | PWT | PS;
             (*pdpt)[3] = ap_pd as u64 | P | RW;
             core::ptr::addr_of_mut!(AP_MAPPED).write(true);

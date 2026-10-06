@@ -137,6 +137,9 @@ pub fn start(hint: Option<Hint>) -> ! {
             hcf();
         }
         if hint.trust_map {
+            unsafe {
+                core::ptr::addr_of_mut!(FROM_EFI).write(true);
+            }
             serial_print("kindling: efi map ");
             serial_u64(hint.ram_end / (1024 * 1024));
             serial_print(" MiB\n");
@@ -167,6 +170,7 @@ static mut WELL_MIB: u64 = 0;
 static mut CUP_KIB: u64 = 0;
 static mut CANARY_AT: u64 = 0;
 static mut CUP_TOP: u64 = 0;
+static mut FROM_EFI: bool = false;
 
 #[inline(never)]
 unsafe extern "C" fn after_cup() -> ! {
@@ -177,6 +181,7 @@ unsafe extern "C" fn after_cup() -> ! {
     // Post-well, on our own tables: wire virtual-wire before any test that
     // reads it. Unconditional — harmless on images that never sleep.
     crate::timer::wire();
+    crate::timer::arm();
     crate::glass::map_and_show();
     if let Some((addr, pitch, _, _)) = crate::glass::fb_info() {
         serial_print("kindling: gop 0x");
@@ -209,6 +214,25 @@ unsafe extern "C" fn after_cup() -> ! {
         if !crate::kbd::live() && !crate::usb::kbd_live() {
             let msg = b"no kbd\n";
             crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
+        }
+        if crate::timer::clock_live() {
+            serial_print("kindling: tick\n");
+            let msg = b"tick\n";
+            crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
+        } else {
+            serial_print("kindling: no tick\n");
+            let msg = b"no tick\n";
+            crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
+        }
+        if unsafe { core::ptr::addr_of!(FROM_EFI).read() } && crate::timer::clock_live() {
+            let t0 = crate::timer::ms();
+            crate::timer::sleep_ms(50);
+            let t1 = crate::timer::ms();
+            if t1.saturating_sub(t0) >= 40 {
+                serial_print("kindling: efi slept\n");
+            } else {
+                serial_print("kindling: efi sleep short\n");
+            }
         }
     }
     #[cfg(feature = "house-test")]

@@ -21,8 +21,8 @@ Swift, purposeful, direct — no noise. Unknown refuses, never silently succeeds
 | 0 | `yield` | — | `0` | done (co-op stub) |
 | 1 | `exit` | `rdi` = code | never | done (`kindling: gleam exit N` + `hlt`) |
 | 2 | `write` | `rdi` = fd, `rsi` = buf, `rdx` = len | bytes or `-errno` | done on fd 1/2 serial **and** the glass (VGA text / GOP blit); other fd → `-EPERM`; len capped 1 MiB; null buf → `-EPERM` |
-| 3 | `sleep` | `rdi` = ms | `0` | done on BIOS (PIT 100 Hz block); stub elsewhere (returns at once) |
-| 4 | `time` | — | ms | done: PIT ms on BIOS, raw `rdtsc` fallback on EFI/crutch |
+| 3 | `sleep` | `rdi` = ms | `0` | done: TSC deadline after the well (HPET or polled PIT). BIOS may `hlt` on IRQ0. Dead clock returns at once (`no tick`) |
+| 4 | `time` | — | ms | done: milliseconds from calibrated TSC when the clock is live; PIT ticks if TSC never armed; raw `rdtsc` only when both are dark |
 | 5 | `spawn` | `rdi` = name | never on success; `-errno` | done (named cairn spark onto private pages + own cup + own CR3; v0 replaces the light). null/empty/slashy/oversize → `-EPERM`; no cairn → `-ENODEV`; missing → `-ENOENT`. Flat `nasm -f bin` first; ELF later. |
 | 6 | `grant` | — | `-EAGAIN` | shut (needs capabilities) |
 | 7 | `flush` | — | `-EAGAIN` | shut (needs Lantern framebuffer) |
