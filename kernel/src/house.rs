@@ -20,6 +20,7 @@ pub const READ: u64 = 10;
 const EPERM: u64 = 1;
 #[cfg(feature = "house-test")]
 const ENOENT: u64 = 2;
+const EIO: u64 = 5;
 const EAGAIN: u64 = 11;
 #[cfg(feature = "house-test")]
 const ENODEV: u64 = 19;
@@ -226,6 +227,19 @@ pub fn kindle(realm: SparkRealm) {
 
 fn take_child() -> SparkRealm {
     unsafe { addr_of!(LIGHT).read_volatile().child }
+}
+
+/// Guest trap: pool the child and give the Light `-EIO`, or halt if no Light.
+/// Never returns.
+pub fn guest_went_out() -> ! {
+    if light_live() {
+        let realm = take_child();
+        crate::mm::drop_spark(&realm);
+        smoor(err(EIO));
+        unsafe { addr_of_mut!(SWITCH).write_volatile(0) };
+        house_smoor_enter();
+    }
+    hcf();
 }
 
 /// The Light's spawn receives `word` in rax.

@@ -66,6 +66,7 @@ test:
 	sh scripts/test-vm.sh reclaim
 	sh scripts/test-vm.sh tale
 	sh scripts/test-vm.sh spawn
+	sh scripts/test-vm.sh splanc
 	sh scripts/test-vm.sh ingle
 	python3 scripts/check-grove.py
 	$(MAKE) efi

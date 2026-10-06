@@ -198,6 +198,47 @@ make steel >/dev/null
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
   --kernel kernel/kernel.fw.bin --out kindling.img
 
+echo "---- splanc ----"
+nasm -f bin -o spark/ember.bin spark/ember.asm
+nasm -f bin -o spark/splanc.bin spark/splanc.asm
+make -C kernel spawn-bin
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.spawn.bin --out kindling-splanc.img \
+  --spark ember=spark/ember.bin --spark splanc=spark/splanc.bin
+got=$(timeout --foreground --signal=KILL 3 "$QEMU" -M pc -m 256M \
+  -bios "$FW" -drive if=ide,format=raw,file=kindling-splanc.img \
+  -display none -serial stdio -no-reboot -no-shutdown 2>/dev/null | tr -d '\r' || true)
+printf '%s\n' "$got" | grep -F -q "kindling: spawn ok" || {
+  echo "FAIL splanc (no spawn ok)"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "kindling: trap 6" || {
+  echo "FAIL splanc (no trap 6)"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "the spark went out" || {
+  echo "FAIL splanc (no went out)"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "stayed" && {
+  echo "FAIL splanc (stayed — a lie)"
+  echo "$got" | tail -12
+  exit 1
+}
+printf '%s\n' "$got" | grep -F -q "kindling: gleam exit 1" || {
+  echo "FAIL splanc (no gleam exit 1)"
+  echo "$got" | tail -12
+  exit 1
+}
+echo "ok   splanc"
+# restore the paved kernel for later steps
+make steel >/dev/null
+python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+  --kernel kernel/kernel.fw.bin --out kindling.img
+
 echo "---- ingle ----"
 nasm -f bin -o spark/ingle.bin spark/ingle.asm
 make -C kernel ingle-bin

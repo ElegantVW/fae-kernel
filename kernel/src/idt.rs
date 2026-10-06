@@ -42,19 +42,33 @@ static mut IDT: [IdtEntry; 256] = [IdtEntry {
 }; 256];
 
 macro_rules! vecs {
-    ($($n:literal),*) => {
+    (noerr: $($n:literal),*; err: $($e:literal),*) => {
         core::arch::global_asm!(
             $(
                 concat!(
                     ".global vec_", stringify!($n), "\n",
                     "vec_", stringify!($n), ":\n",
                     "cli\n",
+                    "push 0\n",
                     "mov rdi, ", stringify!($n), "\n",
                     "jmp trap_common\n",
                 ),
             )*
+            $(
+                concat!(
+                    ".global vec_", stringify!($e), "\n",
+                    "vec_", stringify!($e), ":\n",
+                    "cli\n",
+                    "mov rdi, ", stringify!($e), "\n",
+                    "jmp trap_common\n",
+                ),
+            )*
+            // Frame at trap_common: [err][rip][cs][rflags][rsp][ss].
+            // rsi = CS.RPL so guest (3) can smoor; ring-0 stays fatal.
             ".global trap_common",
             "trap_common:",
+            "mov rsi, [rsp + 16]",
+            "and rsi, 3",
             "and rsp, -16",
             "call trap_named",
             "hlt",
@@ -157,8 +171,8 @@ macro_rules! vecs {
 }
 
 vecs!(
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-    26, 27, 28, 29, 30, 31
+    noerr: 0, 1, 2, 3, 4, 5, 6, 7, 9, 15, 16, 18, 19, 20, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31;
+    err: 8, 10, 11, 12, 13, 14, 17, 21
 );
 
 unsafe extern "C" {
@@ -282,11 +296,40 @@ fn gate_ist(off: u64, ist: u8) -> IdtEntry {
     }
 }
 
+fn glass_trap(n: u64) {
+    let mut b = [0u8; 32];
+    let p = b"kindling: trap ";
+    let mut i = 0usize;
+    while i < p.len() {
+        b[i] = p[i];
+        i += 1;
+    }
+    if n >= 10 {
+        b[i] = b'0' + ((n / 10) % 10) as u8;
+        i += 1;
+    }
+    b[i] = b'0' + (n % 10) as u8;
+    i += 1;
+    b[i] = b'\n';
+    i += 1;
+    crate::glass::put_bytes(b.as_ptr(), i as u64);
+}
+
+/// `n` is the vector; `rpl` is CS.RPL (0 kernel, 3 guest).
+/// Guest + a Light: drop the spark, spawn refuses. Guest alone: speak, halt.
+/// Ring-0 and #DF stay fatal. Never resumes at the fault RIP.
 #[unsafe(no_mangle)]
-extern "sysv64" fn trap_named(n: u64) -> ! {
+extern "sysv64" fn trap_named(n: u64, rpl: u64) -> ! {
     serial_print("kindling: trap ");
     serial_u64(n);
     serial_print("\n");
+    if rpl == 3 && n != 8 {
+        glass_trap(n);
+        serial_print("the spark went out\n");
+        let msg = b"the spark went out\n";
+        crate::glass::put_bytes(msg.as_ptr(), msg.len() as u64);
+        crate::house::guest_went_out();
+    }
     hcf();
 }
 

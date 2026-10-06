@@ -2,7 +2,7 @@
 # test-vm — Kindling test VM: build (if asked), boot, judge the transcript.
 #
 # usage:
-#   test-vm happy|house|ring3|reclaim|tale|spawn|ingle   build + boot the known image
+#   test-vm happy|house|ring3|reclaim|tale|spawn|splanc|ingle   build + boot the known image
 #   test-vm <image> <want>...           boot any image; every want must appear
 #
 # Logs land in test-logs/<case>.log. Prints PASS/FAIL. Exit 0/1.
@@ -133,6 +133,22 @@ spawn)
         "kindling: house ok" "kindling: spawn ok" \
         "the cup is its own" "stayed" "kindling: gleam exit 0"
     ;;
+splanc)
+    nasm -f bin -o spark/ember.bin spark/ember.asm
+    nasm -f bin -o spark/splanc.bin spark/splanc.asm
+    make -C kernel spawn-bin >/dev/null
+    python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+        --kernel kernel/kernel.spawn.bin --out kindling-splanc.img \
+        --spark ember=spark/ember.bin --spark splanc=spark/splanc.bin >/dev/null
+    run_case splanc kindling-splanc.img \
+        "kindling: house ok" "kindling: spawn ok" \
+        "kindling: trap 6" "the spark went out" "kindling: gleam exit 1"
+    if grep -F -q "stayed" "$LOGDIR/splanc.log"; then
+        echo "FAIL splanc (stayed — a lie)"
+        tail -8 "$LOGDIR/splanc.log"
+        exit 1
+    fi
+    ;;
 ingle)
     nasm -f bin -o spark/ingle.bin spark/ingle.asm
     make -C kernel ingle-bin >/dev/null
@@ -142,7 +158,7 @@ ingle)
     python3 scripts/check-ingle.py
     ;;
 "")
-    echo "usage: test-vm happy|house|ring3|reclaim|tale|spawn|ingle|<image> <want>..." >&2
+    echo "usage: test-vm happy|house|ring3|reclaim|tale|spawn|splanc|ingle|<image> <want>..." >&2
     exit 2
     ;;
 *)

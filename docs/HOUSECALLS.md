@@ -24,7 +24,7 @@ Swift, purposeful, direct — no noise. Unknown refuses, never silently succeeds
 | 2 | `write` | `rdi` = fd, `rsi` = buf, `rdx` = len | bytes or `-errno` | done on fd 1/2 serial **and** the glass (VGA text / GOP blit); other fd → `-EPERM`; len capped 1 MiB; null buf → `-EPERM` |
 | 3 | `sleep` | `rdi` = ms | `0` | done: TSC deadline after the well (HPET or polled PIT). BIOS may `hlt` on IRQ0. Dead clock returns at once (`no tick`) |
 | 4 | `time` | — | ms | done: milliseconds from calibrated TSC when the clock is live; PIT ticks if TSC never armed; raw `rdtsc` only when both are dark |
-| 5 | `spawn` | `rdi` = name | last word or `-errno` | done (named cairn spark onto private pages + own cup + own CR3; kindles, then returns the spark's last word when it smoors). One spark at a time — a live Light → `-EAGAIN`. null/empty/slashy/oversize → `-EPERM`; no cairn → `-ENODEV`; missing → `-ENOENT`. Flat `nasm -f bin` first; ELF later. |
+| 5 | `spawn` | `rdi` = name | last word or `-errno` | done (named cairn spark onto private pages + own cup + own CR3; kindles, then returns the spark's last word when it smoors). One spark at a time — a live Light → `-EAGAIN`. Guest `#UD`/`#PF`/`#GP` smoors with `-EIO` (`the spark went out`); never resumes at the fault RIP. null/empty/slashy/oversize → `-EPERM`; no cairn → `-ENODEV`; missing → `-ENOENT`. Flat `nasm -f bin` first; ELF later. |
 | 6 | `grant` | — | `-EAGAIN` | shut (needs capabilities) |
 | 7 | `flush` | — | `-EAGAIN` | shut (needs Lantern framebuffer) |
 | 8 | `glean` | `rdi` = name, `rsi` = buf, `rdx` = len | bytes or `-errno` | done (cairn leaves; missing → `-ENOENT`, bad args → `-EPERM`, no cairn → `-ENODEV`, bad xor → `-EIO`) |
@@ -57,7 +57,9 @@ from ring 0 — direct `dispatch()` + real `int 0xE0` — and prints
 `kindling: house ok`. Null `spawn` must be `-EPERM`; a missing name is
 `-ENODEV` or `-ENOENT`. Feature `spawn-test` then looses `ember` on a
 private CR3: `kindling: spawn ok`, ember kindles `wick`, the second-leaf,
-`stayed`, `gleam exit 0`.
+`stayed`, `gleam exit 0`. Packed with `splanc` instead, ember kindles that
+`ud2`: `kindling: trap 6`, `the spark went out`, `gleam exit 1` — `stayed`
+is a lie.
 Feature `ingle-test` looses `ingle`: `kindling: ingle ok`, the spark writes
 `ingle`, `read` waits, Enter yields `the fire is lit` then `gleam exit 0`.
 Happy path (no `*-test` feature) lights `ingle` when the cairn has it

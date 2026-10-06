@@ -4,7 +4,7 @@
 
 x86_64 kernel we write. The pink suite is userspace. Creature name: **Kindling** — you light kindling, not the log. Lighting tools *are* the build tools (`make help`: flint, steel, tinder, hearth, kindle).
 
-Phase 1 (memory: kindle well + cup-stack) is green. House light (G15–G30) is on: CPL3 `write`/`exit`/`read`, tale, stow, spawn that returns (ember kindles wick; the light remains), Grove on the glass, `ingle` greeter on the paved BIOS and EFI boots, USB HID boot keyboard into house `read` (root or one hub hop), one clock (`sleep`/`time` are ms on EFI too), USB MSC BOT enumerate (READ CAPACITY, glass `msc`) and READ(10) of a FAT boot sector (glass `fat`, MBR/GPT walk). Linux ELF stays later; `grant`/`flush` stay shut.
+Phase 1 (memory: kindle well + cup-stack) is green. House light (G15–G31) is on: CPL3 `write`/`exit`/`read`, tale, stow, spawn that returns (ember kindles wick; the light remains), guest traps smoor (`the spark went out`), Grove on the glass, `ingle` greeter on the paved BIOS and EFI boots, USB HID boot keyboard into house `read` (root or one hub hop), one clock (`sleep`/`time` are ms on EFI too), USB MSC BOT enumerate (READ CAPACITY, glass `msc`) and READ(10) of a FAT boot sector (glass `fat`, MBR/GPT walk). Linux ELF stays later; `grant`/`flush` stay shut.
 
 ## Look
 
@@ -57,10 +57,10 @@ make below          # full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle+efi
 | `scripts/` | `audit-kindle.sh`, `below.sh`, `romsum.py` (IBM BIOS checksum) |
 | `docs/BOOT.md` | Limine vs UEFI vs our firmware, QEMU flags |
 | `docs/FIRMWARE.md` | ROM contract (RAM map, GDT, FMAP, traps) |
-| `docs/BELOW.md` | below gate + house light G15–G30 |
+| `docs/BELOW.md` | below gate + house light G15–G31 |
 | `docs/HOUSECALLS.md` | Gleam-only house calls (`int 0xE0`, not Linux) |
 | `docs/CAIRN.md` | the cairn (leaves + sparks on disk, `glean`) |
-| `spark/` | Gleam sparks (`tale.asm`, `wick.asm`, `ingle.asm`, `ember.asm`) |
+| `spark/` | Gleam sparks (`tale.asm`, `wick.asm`, `ingle.asm`, `ember.asm`, `splanc.asm`) |
 | `docs/syscalls.md` | Linux ABI table (reference only — Gleam speaks house calls) |
 | `limine.conf` | optional Limine menu |
 
@@ -73,7 +73,7 @@ make below          # full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle+efi
 
 ## Phases
 
-0 serial hello → **1 memory (kindle well + cup-stack)** → house light (G15–G30) → `grant`/`flush` / Linux ELF → 3 fork/exec → … suite as guest.
+0 serial hello → **1 memory (kindle well + cup-stack)** → house light (G15–G31) → `grant`/`flush` / Linux ELF → 3 fork/exec → … suite as guest.
 
 ## License
 

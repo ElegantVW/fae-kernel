@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → loader (off the disk) → Kindling spark. House light (G15–G30) is on.
+Firmware → loader (off the disk) → Kindling spark. House light (G15–G31) is on.
 Linux ELF waits on its own gate. This file staying green is still the law.
 
 Run: `make below`  
@@ -50,9 +50,10 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G29g | Iron MSC READ(10) — LBA 0 boot sector; glass `fat` / `no fat` | efi-msc `msc` then `fat`; sendkey still greets | yes |
 | G29h | Iron FAT partition — MBR/GPT walk to the FAT boot sector | efi-msc MBR + FAT32 at LBA 2048; glass `fat` | yes |
 | G30 | The light remains — one Light; ember kindles wick and comes home | spawn greps `stayed` then `gleam exit 0` | yes |
+| G31 | The spark went out — guest `#UD` smoors; Light's spawn refuses | splanc in `make below`: `trap 6`, `the spark went out`, `gleam exit 1` | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 
-House calls (Gleam-only, not Linux): `docs/HOUSECALLS.md`. First set: `yield` / `exit` / `write(fd 1-2)` / `read(fd 0)` / `sleep` / `time` / `glean` / `stow` / `spawn` + shut `grant` / `flush` (`-EAGAIN`). `write` also paints the glass (VGA / GOP). Happy serial unchanged; `house-test` image prints `kindling: house ok`; `spawn-test` prints `kindling: spawn ok`, the second-leaf, then `stayed`. After the well the glass shows the Grove glyph + title. EFI prints Grove on ConOut before touching GOP (IdeaPad has no COM1; Insyde hung inside GOP open).
+House calls (Gleam-only, not Linux): `docs/HOUSECALLS.md`. First set: `yield` / `exit` / `write(fd 1-2)` / `read(fd 0)` / `sleep` / `time` / `glean` / `stow` / `spawn` + shut `grant` / `flush` (`-EAGAIN`). `write` also paints the glass (VGA / GOP). Happy serial unchanged; `house-test` image prints `kindling: house ok`; `spawn-test` prints `kindling: spawn ok`, the second-leaf, then `stayed`. Guest `#UD`/`#PF`/`#GP` print `kindling: trap N` and `the spark went out`; with a Light, `spawn` returns `-EIO`. After the well the glass shows the Grove glyph + title. EFI prints Grove on ConOut before touching GOP (IdeaPad has no COM1; Insyde hung inside GOP open).
 
-Out of gate: storage writes and filesystems (FAT/KINDLOG, stow-via-MSC), SMP APs, LA57 well, trap recover, UHCI/EHCI/mice, deep hubs (xHCI HID boot keyboard, one hub hop, BOT MSC READ CAPACITY, and READ(10) of LBA 0 are in-gate; 8042 poll stays).
+Out of gate: storage writes and filesystems (FAT/KINDLOG, stow-via-MSC), SMP APs, LA57 well, resume at a fault RIP, UHCI/EHCI/mice, deep hubs (xHCI HID boot keyboard, one hub hop, BOT MSC READ CAPACITY, and READ(10) of LBA 0 are in-gate; 8042 poll stays). Guest traps smoor into the Light (G31); ring-0 traps stay fatal.

@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## spark-went-out-g31 (2026-10-06)
+
+- Guest `#UD` / `#PF` / `#GP` (CS.RPL 3) print `kindling: trap N` and `the spark went out` on serial and the glass. With a Light, `drop_spark` and `spawn` returns `-EIO`. No resume at the fault RIP. Ring-0 traps and `#DF` stay fatal (`kindling: trap N` + `hlt`). Error-code vectors keep a uniform frame.
+- Proof spark `splanc` (Irish *splanc*) is `ud2`. Ember kindles it when packed; `stayed` is a lie. Serial: `kindling: trap 6` / `the spark went out` / `kindling: gleam exit 1`. `make below` += splanc. G30 spawn (wick, no splanc) still `stayed` / `gleam exit 0`.
+
 ## light-g30 (2026-10-06)
 
 - `spawn` kindles one named spark and returns its last word when that spark `exit`s. One kernel Light holds the house frame; the child reuses the well-cup; `drop_spark` pools the cloned tables, spark pages, guard, and cup. Nested spawn is `-EAGAIN`. No pid, no wait, no table.

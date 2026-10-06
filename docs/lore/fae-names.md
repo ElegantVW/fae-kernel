@@ -80,6 +80,7 @@ Do not propose these as new creature names. They are already working.
 | Pixie, Kur, Murmur, Wisp | Taken familiars / eggs |
 | wick | Second Gleam spark (G20). Firelighting; not a signer |
 | ember | G30 test spark: the live coal that stays while the wick burns. OE *æmerge*. Not Gleed (signer), not Hearth (QEMU + suite greeter) |
+| splanc | G31 test spark that does not catch. Irish *splanc* / flint-fire. `ud2`. Not Flint (signer) |
 | Seal, Rift, Goblin, Siren, Imp, Magpie, Ether, Scry, Spellbook, Scroll | Suite apps |
 | Aegis, Bulwark, Imbue, Menagerie, Fairy Lantern | Suite / engines |
 | Alchemy, Grimoire, Abacus, Quests, Hourglass, Almanac, Eye, Vault, Reflection, Tome, Zen, Tick, Summon, Purity, Sentinel, Ward | Suite |
@@ -104,7 +105,7 @@ Etymology of the chosen name, verified: English *kindling* is the verbal noun of
 | **Aithinne** | Firebrand; spark | Irish, from Old Irish *aithinne* (Ó Dónaill; Wiktionary) | Brand you carry to light the next hearth. Fits ‘still only a spark’ | Low. Pronounce roughly *AH-hin-yeh*. Not in the suite |
 | **Ingle** | Fire on the hearth; fireplace | Scots / northern English; compared in dialect lists with Gaelic *aingeal* ‘fire, lighted coal’ (that *aingeal* also means ‘angel’ — different word) | The fire *in* the house, not the greeter named Hearth | Medium: sits next to Hearth. Fine as firmware/comment, noisy as a signer |
 | **Lasair** | A single tongue of flame | Irish | One flame, not the whole blaze — same scale as Kindling | Low |
-| **Splanc** | Spark knocked from stone | Irish (*splanc* / *tine chreasa* ‘flint-fire’) | The spark Flint strikes. Good for a panic prefix or a tiny init, not the kernel | Medium vs Flint (same moment in the fire triangle) |
+| **Splanc** | Spark knocked from stone | Irish (*splanc* / *tine chreasa* ‘flint-fire’) | The spark Flint strikes. **Struck as a spark** (G31): `ud2`, does not catch | Taken — spark. Medium vs Flint (same moment in the fire triangle) |
 | **Teine** | Fire | Scottish Gaelic; Irish *tine*; Manx *çhenney*. Proto-Celtic *teɸnets* | The element itself. Too big for the kernel (Kindling is the *small* wood) | Medium: generic; also *teine sìth* ‘fairy fire’ = will-o’-the-wisp, near Wisp |
 | **Tân** | Fire | Welsh / Cornish / Breton *tan* | Same as Teine on the Brythonic side | Low in English chat; diacritic |
 | **Needfire** | Ritual fire kindled by wood friction after all other fires are put out | English *need-fire*; Ger. *Notfeuer*; Sc. Gaelic *tein'-éigin* | A fire you raise *yourself* when the borrowed match is gone — our firmware column vs Limine | Low. Two syllables. Slightly ceremonial |
