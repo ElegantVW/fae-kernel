@@ -657,6 +657,19 @@ fn page_free(p: u64) {
     }
 }
 
+/// Return a contiguous run to the pool (high to low, same as drop_spark).
+pub(crate) fn release_run(base: u64, bytes: u64) {
+    if bytes == 0 {
+        return;
+    }
+    let np = bytes.div_ceil(PAGE);
+    let mut s = np;
+    while s > 0 {
+        s -= 1;
+        page_free(base + s * PAGE);
+    }
+}
+
 #[cfg(feature = "reclaim-test")]
 fn pool_count() -> usize {
     unsafe { core::ptr::addr_of!(POOL_N).read() }

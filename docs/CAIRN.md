@@ -101,11 +101,14 @@ Sparks run from a private pool copy, never in place: a spark's buf lives
 inside its own record, and running in place lets its writes perturb the image
 the next boot verifies — the floor must be its own (64 KiB law, contiguity
 asserted, `tale FAIL scattered` / `spawn FAIL 4` otherwise). `spawn` (house
-call 5) copies the named spark the same way, then clones the kernel map onto
-a new CR3, strips U/S from kernel leaves, and grants user only the spark and
-a 64 KiB cup (one guard page not-present). One Light: kindle the spark; when
-it smoors, `spawn` returns the last word. Nested spawn is `-EAGAIN`. ELF is
-a format later, not a Linux ABI.
+call 5) copies the named spark the same way from the cairn first (kind 1);
+when that name is missing and a FAT volume is live, it gathers from the
+volume's **root** by the same Gleam name (cap 64 KiB, exact size, no
+truncated spark). Then it clones the kernel map onto a new CR3, strips U/S
+from kernel leaves, and grants user only the spark and a 64 KiB cup (one
+guard page not-present). One Light: kindle the spark; when it smoors,
+`spawn` returns the last word. Nested spawn is `-EAGAIN`. ELF is a format
+later, not a Linux ABI. FAT is the medium — DMA dest stays the MSC page.
 
 A panic mid-stow leaves the disk half-inked (sector new, KMAP old) — the
 next boot then refuses `no-cairn` instead of reading corrupt. That refusal
@@ -120,7 +123,8 @@ is the design working.
 - **glean** — house call 8: gather a leaf's bytes (cairn first, then the
   volume root when FAT is live).
 - **stow** — house call 9 (lay bytes down; G2b write path).
-- **spawn** — house call 5 (named spark, private pages, own cup + CR3).
+- **spawn** — house call 5 (named spark, private pages, own cup + CR3;
+  cairn first, then the volume root when FAT is live).
 - **tale** — the first spark: speaks a leaf, then exits.
 - **first-leaf** — the first leaf, packed at cast time.
 - **wick** — the second spark: tells `second-leaf` from its own cup, then exits.

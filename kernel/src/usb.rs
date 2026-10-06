@@ -1339,6 +1339,59 @@ impl LfnAcc {
     }
 }
 
+/// Byte length of a named root file, or `-errno`. Empty is `0`.
+pub fn fat_file_len(name: &[u8]) -> u64 {
+    if name.is_empty() || name.len() > 64 {
+        return err(EPERM);
+    }
+    let Some(h) = host_mut().as_mut() else {
+        return err(ENODEV);
+    };
+    if h.msc_slot == 0 || !h.fat {
+        return err(ENODEV);
+    }
+    if !h.vol_ok {
+        return err(EIO);
+    }
+    match find_root(h, name) {
+        Ok((_, size)) => size as u64,
+        Err(e) => err(e),
+    }
+}
+
+/// Exact load of a named root file into `buf`. `cap` is the probed size
+/// (1..=64 KiB). DMA dest stays MSC_DATA. Short or long is `-EIO`.
+pub fn load_fat(name: &[u8], buf: u64, cap: u64) -> u64 {
+    if buf == 0 || cap == 0 || cap > 65536 || name.is_empty() || name.len() > 64 {
+        return err(EPERM);
+    }
+    let Some(h) = host_mut().as_mut() else {
+        return err(ENODEV);
+    };
+    if h.msc_slot == 0 || !h.fat {
+        return err(ENODEV);
+    }
+    if !h.vol_ok {
+        return err(EIO);
+    }
+    match find_root(h, name) {
+        Ok((clus, size)) => {
+            if size as u64 != cap {
+                return err(EIO);
+            }
+            let n = read_chain(h, clus, size, buf, cap);
+            if n != cap {
+                if (n as i64) < 0 {
+                    return n;
+                }
+                return err(EIO);
+            }
+            n
+        }
+        Err(e) => err(e),
+    }
+}
+
 /// Gather a named leaf from the FAT volume's root. Gleam name (1–64), not 8.3.
 /// FAT is the medium. Cap 1 MiB. Read only. DMA stays on the proven MSC page.
 pub fn glean_fat(name: &[u8], buf: u64, len: u64) -> u64 {

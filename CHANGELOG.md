@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## spawn-volume-g35 (2026-10-07)
+
+- `spawn` still takes the cairn first (kind 1). When that name is missing (or there is no cairn) and MSC saw a FAT volume, it gathers from the volume's **root** by the same Gleam name. Cap 64 KiB, exact size, raw `nasm -f bin`. Empty or oversize is `-EPERM`. A truncated spark is a lie. DMA dest stays the MSC page.
+- QEMU efi-msc plants LFN `leaf` beside `LEAF` (8.3 `LEAF~1`). Cairn has only `ingle`, so the round trip is the volume: Enter → fire → **q** → `the light remains` → **q** → `gleam exit 0`.
+
 ## ingle-light-g34 (2026-10-07)
 
 - No-Light `exit` paints serial **and** the glass `kindling: gleam exit N`, then `hlt`. Iron **q** is a visible halt (IdeaPad has no COM1).

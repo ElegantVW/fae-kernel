@@ -384,8 +384,11 @@ fn spawn_fail(n: u64) -> ! {
     hcf();
 }
 
-/// Copy a spark out of the cairn onto a contiguous pool run. None = scattered.
-fn copy_out(src: u64, len: u64) -> Option<u64> {
+/// Contiguous pool run for a spark. None = scattered (run returned to the pool).
+fn take_pages(len: u64) -> Option<u64> {
+    if len == 0 {
+        return None;
+    }
     let pages = len.div_ceil(4096);
     let mut dst = 0u64;
     let mut prev = 0u64;
@@ -395,38 +398,29 @@ fn copy_out(src: u64, len: u64) -> Option<u64> {
         if dst == 0 {
             dst = p;
         } else if p != prev + 4096 {
+            crate::mm::release_run(dst, i * 4096);
+            crate::mm::release_run(p, 4096);
             return None;
         }
         prev = p;
-        let mut j = 0u64;
-        while j < 4096 && i * 4096 + j < len {
-            let b = unsafe { ((src + i * 4096 + j) as *const u8).read_volatile() };
-            unsafe { ((p + j) as *mut u8).write_volatile(b) };
-            j += 1;
-        }
         i += 1;
     }
     Some(dst)
 }
 
-/// House call 5: named cairn spark onto private pages, own cup, own CR3.
-/// Kindles the spark; when it smoors, this call returns the last word in rax.
-/// One spark at a time — a live Light is `-EAGAIN`.
-pub fn spawn(name_ptr: u64) -> u64 {
-    let (name, nl) = match take_name(name_ptr) {
-        Ok(v) => v,
-        Err(e) => return err(e),
-    };
-    if crate::house::light_live() {
-        return err(EAGAIN);
+/// Copy a spark onto a contiguous pool run. None = scattered.
+fn copy_out(src: u64, len: u64) -> Option<u64> {
+    let dst = take_pages(len)?;
+    let mut i = 0u64;
+    while i < len {
+        let b = unsafe { ((src + i) as *const u8).read_volatile() };
+        unsafe { ((dst + i) as *mut u8).write_volatile(b) };
+        i += 1;
     }
-    let Some(c) = open() else {
-        return err(ENODEV);
-    };
-    let (src, len) = match find(&c, &name[..nl], 1) {
-        Ok(v) => v,
-        Err(e) => return err(e),
-    };
+    Some(dst)
+}
+
+fn kindle_bytes(src: u64, len: u64) -> u64 {
     if len == 0 || len > 65536 {
         return err(EPERM);
     }
@@ -436,6 +430,57 @@ pub fn spawn(name_ptr: u64) -> u64 {
     let realm = crate::mm::place_spark(dst, len);
     crate::house::kindle(realm);
     0
+}
+
+fn spawn_volume(name: &[u8], had_cairn: bool) -> u64 {
+    if !crate::usb::fat_live() {
+        return if had_cairn { err(ENOENT) } else { err(ENODEV) };
+    }
+    let n = crate::usb::fat_file_len(name);
+    if (n as i64) < 0 {
+        return n;
+    }
+    if n == 0 || n > 65536 {
+        return err(EPERM);
+    }
+    let Some(dst) = take_pages(n) else {
+        spawn_fail(4);
+    };
+    let got = crate::usb::load_fat(name, dst, n);
+    if got != n {
+        crate::mm::release_run(dst, n);
+        if (got as i64) < 0 {
+            return got;
+        }
+        return err(EIO);
+    }
+    let realm = crate::mm::place_spark(dst, n);
+    crate::house::kindle(realm);
+    0
+}
+
+/// House call 5: named spark onto private pages, own cup, own CR3.
+/// Cairn first (kind 1). If that name is missing (or there is no cairn) and
+/// a FAT volume is live, the volume's root by the same Gleam name, cap 64 KiB,
+/// raw `nasm -f bin`. Kindles; when it smoors, this call returns the last
+/// word in rax. One spark at a time — a live Light is `-EAGAIN`.
+pub fn spawn(name_ptr: u64) -> u64 {
+    let (name, nl) = match take_name(name_ptr) {
+        Ok(v) => v,
+        Err(e) => return err(e),
+    };
+    if crate::house::light_live() {
+        return err(EAGAIN);
+    }
+    let nm = &name[..nl];
+    match open() {
+        Some(c) => match find(&c, nm, 1) {
+            Ok((src, len)) => kindle_bytes(src, len),
+            Err(e) if e == EIO => err(EIO),
+            Err(_) => spawn_volume(nm, true),
+        },
+        None => spawn_volume(nm, false),
+    }
 }
 
 /// Loose `ember`: verify, copy, private CR3 + cup, enter at CPL3.
