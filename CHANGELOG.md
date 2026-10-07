@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## hall-g41c (2026-10-07)
+
+- Iron looped `who keeps this fire` / `speak the word` / `speak it again`: vfat stores `hands` as 8.3 `HANDS` with no LFN, and glean/stow compared exact case, so enlist missed the leaf and restarted the name. LFN is exact and wins (`leaf` is the spark, not the 8.3 `LEAF` page). 8.3-only aliases fold (`hands` finds `HANDS`). Stow miss paints `the ink will not hold`.
+- Letters and backspace landed twice the way Enter used to (USB HID + 8042). A key is one glyph until it is up. 8042 is muted once a USB boot keyboard is found.
+
 ## enter-g41b (2026-10-07)
 
 - One Enter is one line. Iron typed the word, then saw `speak it again` and immediately `speak the word` — the confirm line ate a second newline from USB HID + 8042. `read` ignores 8042 scancodes while a USB boot keyboard is live, and holds further `\n` until Enter is up.

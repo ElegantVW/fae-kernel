@@ -349,13 +349,25 @@ fn save(book: &Book) -> Result<(), u64> {
     }
     match stow_leaf(&HANDS_NAME, hands) {
         Ok(n) if n == SEAL_LEN as u64 => {}
-        Ok(_) => return Err(err(EIO)),
-        Err(e) => return Err(err(e)),
+        Ok(_) => {
+            speak("the ink will not hold\n");
+            return Err(err(EIO));
+        }
+        Err(e) => {
+            speak("the ink will not hold\n");
+            return Err(err(e));
+        }
     }
     match stow_leaf(&TWIN_NAME, twin) {
         Ok(n) if n == SEAL_LEN as u64 => {}
-        Ok(_) => return Err(err(EIO)),
-        Err(e) => return Err(err(e)),
+        Ok(_) => {
+            speak("the ink will not hold\n");
+            return Err(err(EIO));
+        }
+        Err(e) => {
+            speak("the ink will not hold\n");
+            return Err(err(e));
+        }
     }
     Ok(())
 }
@@ -392,8 +404,14 @@ fn pad_name(src: &[u8]) -> [u8; NAME_LEN] {
 fn ink_hand(name: &[u8; NAME_LEN]) -> Result<(), u64> {
     match stow_leaf(&HAND_NAME, name) {
         Ok(n) if n == NAME_LEN as u64 => Ok(()),
-        Ok(_) => Err(err(EIO)),
-        Err(e) => Err(err(e)),
+        Ok(_) => {
+            speak("the ink will not hold\n");
+            Err(err(EIO))
+        }
+        Err(e) => {
+            speak("the ink will not hold\n");
+            Err(err(e))
+        }
     }
 }
 

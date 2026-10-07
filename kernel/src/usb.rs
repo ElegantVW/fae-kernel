@@ -391,27 +391,24 @@ fn hid_report(h: &mut Host) {
     let mut i = 0usize;
     while i < 6 {
         let k = now[i];
-        if k != 0 {
-            let mut was = false;
-            let mut j = 0usize;
-            while j < 6 {
-                if h.kbd_prev[j] == k {
-                    was = true;
-                    break;
-                }
-                j += 1;
-            }
-            if !was {
-                let a = hid_ascii(k);
-                if a != 0 {
-                    crate::kbd::push_ascii(a);
-                }
+        if k != 0 && !hid_has(&h.kbd_prev, k) {
+            let a = hid_ascii(k);
+            if a != 0 {
+                crate::kbd::push_ascii(a);
             }
         }
         i += 1;
     }
-    if hid_has(&h.kbd_prev, 0x28) && !hid_has(&now, 0x28) {
-        crate::kbd::enter_up();
+    i = 0;
+    while i < 6 {
+        let k = h.kbd_prev[i];
+        if k != 0 && !hid_has(&now, k) {
+            let a = hid_ascii(k);
+            if a != 0 {
+                crate::kbd::key_up(a);
+            }
+        }
+        i += 1;
     }
     h.kbd_prev = now;
     let _ = h.intr.enq(h.report, 8, (TRB_NORMAL << 10) | IOC | ISP);
@@ -883,6 +880,7 @@ fn try_hid(
     }
     h.kbd_slot = slot;
     h.kbd_prev = [0; 6];
+    crate::kbd::prefer_usb();
     let _ = h.intr.enq(h.report, 8, (TRB_NORMAL << 10) | IOC | ISP);
     doorbell(h, slot as u32, h.kbd_dci as u32);
     true
@@ -1496,6 +1494,7 @@ fn find_root16(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<(u32, u32), u6
         .wrapping_add(vol.reserved as u32)
         .wrapping_add(fats_secs(vol));
     let mut lfn = LfnAcc::new();
+    let mut short = None;
     let mut k = 0u32;
     while k < secs {
         if k >= MAX_DIR_SEC {
@@ -1504,20 +1503,21 @@ fn find_root16(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<(u32, u32), u6
         if !msc_read10(h, start.wrapping_add(k), h.data + MSC_DATA, 1, 512) {
             return Err(EIO);
         }
-        match scan_sec(h.data + MSC_DATA, name, &mut lfn) {
+        match scan_sec(h.data + MSC_DATA, name, &mut lfn, &mut short) {
             Scan::Found(c, sz) => return Ok((c, sz)),
-            Scan::End => return Err(ENOENT),
+            Scan::End => break,
             Scan::More => {}
         }
         k = k.saturating_add(1);
     }
-    Err(ENOENT)
+    short.ok_or(ENOENT)
 }
 
 fn find_root32(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<(u32, u32), u64> {
     let mut clus = vol.root_clus;
     let mut secs = 0u32;
     let mut lfn = LfnAcc::new();
+    let mut short = None;
     loop {
         if clus < 2 {
             return Err(EIO);
@@ -1531,9 +1531,9 @@ fn find_root32(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<(u32, u32), u6
             if !msc_read10(h, base.wrapping_add(s as u32), h.data + MSC_DATA, 1, 512) {
                 return Err(EIO);
             }
-            match scan_sec(h.data + MSC_DATA, name, &mut lfn) {
+            match scan_sec(h.data + MSC_DATA, name, &mut lfn, &mut short) {
                 Scan::Found(c, sz) => return Ok((c, sz)),
-                Scan::End => return Err(ENOENT),
+                Scan::End => return short.ok_or(ENOENT),
                 Scan::More => {}
             }
             secs = secs.saturating_add(1);
@@ -1541,13 +1541,18 @@ fn find_root32(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<(u32, u32), u6
         }
         match fat_next(h, vol, clus) {
             None => return Err(EIO),
-            Some(0) => return Err(ENOENT),
+            Some(0) => return short.ok_or(ENOENT),
             Some(n) => clus = n,
         }
     }
 }
 
-fn scan_sec(sec: u64, name: &[u8], lfn: &mut LfnAcc) -> Scan {
+fn scan_sec(
+    sec: u64,
+    name: &[u8],
+    lfn: &mut LfnAcc,
+    short: &mut Option<(u32, u32)>,
+) -> Scan {
     let mut e = 0u64;
     while e < 512 {
         let ent = sec + e;
@@ -1562,46 +1567,73 @@ fn scan_sec(sec: u64, name: &[u8], lfn: &mut LfnAcc) -> Scan {
             lfn_feed(lfn, ent);
         } else if attr & 0x18 != 0 {
             lfn.clear();
-        } else if match_file(ent, name, lfn) {
-            let clus = (r16le(ent + 20) as u32) << 16 | r16le(ent + 26) as u32;
-            let size = r32le(ent + 28);
-            return Scan::Found(clus, size);
         } else {
-            lfn.clear();
+            match match_file(ent, name, lfn) {
+                Hit::Lfn => {
+                    let clus = (r16le(ent + 20) as u32) << 16 | r16le(ent + 26) as u32;
+                    let size = r32le(ent + 28);
+                    return Scan::Found(clus, size);
+                }
+                Hit::Short => {
+                    if short.is_none() {
+                        let clus = (r16le(ent + 20) as u32) << 16 | r16le(ent + 26) as u32;
+                        let size = r32le(ent + 28);
+                        *short = Some((clus, size));
+                    }
+                    lfn.clear();
+                }
+                Hit::None => lfn.clear(),
+            }
         }
         e += 32;
     }
     Scan::More
 }
 
-fn match_file(ent: u64, name: &[u8], lfn: &LfnAcc) -> bool {
-    if lfn.ready && lfn.ck == short_cksum(ent) && lfn.len == name.len() {
-        let mut i = 0usize;
-        let mut same = true;
-        while i < lfn.len {
-            if lfn.buf[i] != name[i] {
-                same = false;
-                break;
-            }
-            i += 1;
-        }
-        if same {
-            return true;
-        }
+fn fold_ascii(b: u8) -> u8 {
+    if (b'A'..=b'Z').contains(&b) {
+        b + 32
+    } else {
+        b
     }
-    let mut short = [0u8; 64];
-    let n = eight_three(ent, &mut short);
-    if n != name.len() {
+}
+
+fn name_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
         return false;
     }
     let mut i = 0usize;
-    while i < n {
-        if short[i] != name[i] {
+    while i < a.len() {
+        if fold_ascii(a[i]) != fold_ascii(b[i]) {
             return false;
         }
         i += 1;
     }
     true
+}
+
+enum Hit {
+    /// Long name matches the Gleam name, byte for byte.
+    Lfn,
+    /// No LFN; 8.3 alias matches when ASCII case is folded.
+    Short,
+    None,
+}
+
+fn match_file(ent: u64, name: &[u8], lfn: &LfnAcc) -> Hit {
+    if lfn.ready && lfn.ck == short_cksum(ent) {
+        if lfn.len == name.len() && &lfn.buf[..lfn.len] == name {
+            return Hit::Lfn;
+        }
+        return Hit::None;
+    }
+    let mut short = [0u8; 64];
+    let n = eight_three(ent, &mut short);
+    if n == name.len() && name_eq(&short[..n], name) {
+        Hit::Short
+    } else {
+        Hit::None
+    }
 }
 
 fn eight_three(ent: u64, out: &mut [u8; 64]) -> usize {
@@ -2432,6 +2464,9 @@ fn bringup(bar: u64, len: u64) -> bool {
         core::ptr::addr_of_mut!(KBD).write(h.kbd_slot != 0);
         core::ptr::addr_of_mut!(MSC).write(h.msc_slot != 0);
         core::ptr::addr_of_mut!(FAT).write(h.fat);
+    }
+    if h.kbd_slot != 0 {
+        crate::kbd::prefer_usb();
     }
     *host_mut() = Some(h);
     true

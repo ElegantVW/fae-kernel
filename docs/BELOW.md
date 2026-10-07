@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → loader (off the disk) → Kindling spark. House light (G15–G41b) is on.
+Firmware → loader (off the disk) → Kindling spark. House light (G15–G41c) is on.
 Linux ELF waits on its own gate. This file staying green is still the law.
 
 Run: `make below`  
@@ -62,6 +62,7 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G40 | The hall — select / create / delete; last hand stays; split refuses | efi-keeper: two keepers, dismiss, last stays, flipped twin → `the book is split` | yes |
 | G41 | The hall answers — cut / twin / knows you / given back; stranger confirm | ingle-keeper mismatch + answers; efi-keeper choose/dismiss lines | yes |
 | G41b | One Enter is one line — USB kbd silences 8042; `\n` until key-up | ingle-keeper / efi-keeper still type word then confirm | yes |
+| G41c | LFN wins, 8.3-only folds; a key is one glyph until up; stow miss speaks | efi-msc `leaf` ≠ `LEAF`; efi-keeper enlists; iron `HANDS` matches `hands` | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 

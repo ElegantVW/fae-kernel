@@ -16,9 +16,11 @@ static mut HEAD: usize = 0;
 static mut TAIL: usize = 0;
 static mut LIVE: bool = false;
 static mut EXT: bool = false;
-/// One physical Enter can land twice (USB HID + 8042). Hold further
-/// `\n` until that key is up.
-static mut HOLD_NL: bool = false;
+/// One physical key can land twice (USB HID + 8042). Hold that ASCII
+/// until the key is up — the same hold Enter already had.
+static mut HELD: [bool; 256] = [false; 256];
+/// USB boot keyboard is speaking; 8042 copies of the same laptop keys stay out.
+static mut MUTE_PS2: bool = false;
 
 #[inline]
 unsafe fn outb(port: u16, val: u8) {
@@ -131,10 +133,17 @@ pub(crate) fn push_ascii(b: u8) {
     push(b);
 }
 
-/// HID/8042 Enter break.
-pub(crate) fn enter_up() {
+/// HID/8042 key break. Enter is `b'\n'`.
+pub(crate) fn key_up(b: u8) {
     unsafe {
-        HOLD_NL = false;
+        HELD[b as usize] = false;
+    }
+}
+
+/// USB boot keyboard is speaking; drop 8042 copies of the same laptop keys.
+pub(crate) fn prefer_usb() {
+    unsafe {
+        MUTE_PS2 = true;
     }
 }
 
@@ -142,17 +151,11 @@ fn push(b: u8) {
     if b == 0 {
         return;
     }
-    if b == b'\n' {
-        unsafe {
-            if HOLD_NL {
-                return;
-            }
-            HOLD_NL = true;
+    unsafe {
+        if HELD[b as usize] {
+            return;
         }
-    } else {
-        unsafe {
-            HOLD_NL = false;
-        }
+        HELD[b as usize] = true;
     }
     unsafe {
         let head = core::ptr::addr_of!(HEAD).read();
@@ -230,9 +233,12 @@ fn take_scancode(sc: u8) {
             core::ptr::addr_of_mut!(EXT).write(false);
         } else if sc == 0xE0 {
             core::ptr::addr_of_mut!(EXT).write(true);
-        } else if sc == 0x9C {
-            enter_up();
-        } else if sc & 0x80 == 0 {
+        } else if sc & 0x80 != 0 {
+            let a = ascii(sc & 0x7F);
+            if a != 0 {
+                key_up(a);
+            }
+        } else {
             push(ascii(sc));
         }
     }
@@ -247,7 +253,10 @@ fn drain_port() {
             let sc = inb(DATA);
             // USB boot kbd already speaks; 8042 emulation of the same
             // laptop keys would double every glyph and every Enter.
-            if core::ptr::addr_of!(LIVE).read() && !crate::usb::kbd_live() {
+            if core::ptr::addr_of!(LIVE).read()
+                && !core::ptr::addr_of!(MUTE_PS2).read()
+                && !crate::usb::kbd_live()
+            {
                 take_scancode(sc);
             }
             n = n.saturating_add(1);

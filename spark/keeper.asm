@@ -89,6 +89,8 @@ start:
         je      die
         cmp     rax, -19                ; -ENODEV shut
         je      die
+        cmp     rax, -22                ; -EINVAL confirm
+        je      .askword_first
         jmp     .cycle
 
 .hall:
