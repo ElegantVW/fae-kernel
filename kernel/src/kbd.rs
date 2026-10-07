@@ -16,6 +16,9 @@ static mut HEAD: usize = 0;
 static mut TAIL: usize = 0;
 static mut LIVE: bool = false;
 static mut EXT: bool = false;
+/// One physical Enter can land twice (USB HID + 8042). Hold further
+/// `\n` until that key is up.
+static mut HOLD_NL: bool = false;
 
 #[inline]
 unsafe fn outb(port: u16, val: u8) {
@@ -128,9 +131,28 @@ pub(crate) fn push_ascii(b: u8) {
     push(b);
 }
 
+/// HID/8042 Enter break.
+pub(crate) fn enter_up() {
+    unsafe {
+        HOLD_NL = false;
+    }
+}
+
 fn push(b: u8) {
     if b == 0 {
         return;
+    }
+    if b == b'\n' {
+        unsafe {
+            if HOLD_NL {
+                return;
+            }
+            HOLD_NL = true;
+        }
+    } else {
+        unsafe {
+            HOLD_NL = false;
+        }
     }
     unsafe {
         let head = core::ptr::addr_of!(HEAD).read();
@@ -208,6 +230,8 @@ fn take_scancode(sc: u8) {
             core::ptr::addr_of_mut!(EXT).write(false);
         } else if sc == 0xE0 {
             core::ptr::addr_of_mut!(EXT).write(true);
+        } else if sc == 0x9C {
+            enter_up();
         } else if sc & 0x80 == 0 {
             push(ascii(sc));
         }
@@ -221,7 +245,9 @@ fn drain_port() {
         let mut n = 0u32;
         while inb(STAT) & 1 != 0 {
             let sc = inb(DATA);
-            if core::ptr::addr_of!(LIVE).read() {
+            // USB boot kbd already speaks; 8042 emulation of the same
+            // laptop keys would double every glyph and every Enter.
+            if core::ptr::addr_of!(LIVE).read() && !crate::usb::kbd_live() {
                 take_scancode(sc);
             }
             n = n.saturating_add(1);

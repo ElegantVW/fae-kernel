@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## enter-g41b (2026-10-07)
+
+- One Enter is one line. Iron typed the word, then saw `speak it again` and immediately `speak the word` — the confirm line ate a second newline from USB HID + 8042. `read` ignores 8042 scancodes while a USB boot keyboard is live, and holds further `\n` until Enter is up.
+
 ## hall-answers-g41 (2026-10-07)
 
 - The hall answers. After `enlist` the glass writes `the name is cut` and `the word sleeps in the twin`. After `choose`, `this fire knows you`. After `dismiss`, `that name is given back`. Confirm mismatch stays in keeper: `the second word is a stranger` (no kernel call). Last hand still stays. ingle-keeper / efi-keeper greps those lines. Fresh start on KINDLING: wax `hand` / `hands` / `twin`.

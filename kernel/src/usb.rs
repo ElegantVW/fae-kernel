@@ -410,9 +410,23 @@ fn hid_report(h: &mut Host) {
         }
         i += 1;
     }
+    if hid_has(&h.kbd_prev, 0x28) && !hid_has(&now, 0x28) {
+        crate::kbd::enter_up();
+    }
     h.kbd_prev = now;
     let _ = h.intr.enq(h.report, 8, (TRB_NORMAL << 10) | IOC | ISP);
     doorbell(h, h.kbd_slot as u32, h.kbd_dci as u32);
+}
+
+fn hid_has(keys: &[u8; 6], k: u8) -> bool {
+    let mut i = 0usize;
+    while i < 6 {
+        if keys[i] == k {
+            return true;
+        }
+        i += 1;
+    }
+    false
 }
 
 fn hid_ascii(u: u8) -> u8 {
