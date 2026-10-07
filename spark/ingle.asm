@@ -1,7 +1,10 @@
-; ingle — greeter spark, the desktop. Writes its name, reads a line, says
-; the fire is lit, kindles leaf once, writes the light remains when that
-; spark smoors, reads until q, exits. Flat binary, nasm -f bin, entry 0.
-; House calls: write 2, read 10, spawn 5, exit 1.
+; ingle — greeter spark, the desktop. Writes its name, greets the hand
+; if one is inked, reads a line, says the fire is lit, kindles leaf once,
+; writes the light remains when that spark smoors, reads until q, exits.
+; An empty hand (32 zero bytes) kindles keeper once so the next boot
+; greets that name. A miss of hand or keeper is quiet.
+; Flat binary, nasm -f bin, entry 0.
+; House calls: write 2, read 10, spawn 5, glean 8, exit 1.
 
         bits    64
         default abs
@@ -13,6 +16,50 @@ start:
         mov     rdx, 6
         int     0xE0
 
+        mov     rax, 8                  ; glean "hand"
+        lea     rdi, [rel handname]
+        lea     rsi, [rel handbuf]
+        mov     rdx, 32
+        int     0xE0
+        test    rax, rax
+        js      .askenter               ; no leaf — skip
+        cmp     byte [rel handbuf], 0
+        jne     .sayname                ; already inked
+        mov     rax, 5                  ; spawn "keeper"
+        lea     rdi, [rel keepername]
+        int     0xE0
+        mov     rax, 8                  ; glean again
+        lea     rdi, [rel handname]
+        lea     rsi, [rel handbuf]
+        mov     rdx, 32
+        int     0xE0
+        test    rax, rax
+        js      .askenter
+        cmp     byte [rel handbuf], 0
+        je      .askenter
+.sayname:
+        lea     rsi, [rel handbuf]
+        xor     edx, edx
+.nlen:
+        cmp     rdx, 32
+        jae     .wname
+        cmp     byte [rsi + rdx], 0
+        je      .wname
+        inc     rdx
+        jmp     .nlen
+.wname:
+        test    rdx, rdx
+        jz      .askenter
+        mov     rax, 2                  ; write the name
+        mov     rdi, 1
+        int     0xE0
+        mov     rax, 2                  ; newline
+        mov     rdi, 1
+        lea     rsi, [rel nl]
+        mov     rdx, 1
+        int     0xE0
+
+.askenter:
         xor     ebx, ebx
 .more:
         mov     rax, 10                 ; read fd 0, one byte
@@ -67,8 +114,12 @@ start:
         ud2
 
 hello:  db      "ingle", 10
+nl:     db      10
 lit:    db      "the fire is lit", 10
 home:   db      "the light remains", 10
 leafname: db    "leaf", 0
+handname: db    "hand", 0
+keepername: db  "keeper", 0
 key:    db      0
+handbuf: times 32 db 0
 buf:    times 256 db 0

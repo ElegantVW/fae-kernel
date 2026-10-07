@@ -2,7 +2,7 @@
 # test-vm — Kindling test VM: build (if asked), boot, judge the transcript.
 #
 # usage:
-#   test-vm happy|house|ring3|reclaim|tale|spawn|splanc|ingle|ingle-leaf|leaf   build + boot the known image
+#   test-vm happy|house|ring3|reclaim|tale|spawn|splanc|ingle|ingle-leaf|ingle-keeper|leaf   build + boot the known image
 #   test-vm <image> <want>...           boot any image; every want must appear
 #
 # Logs land in test-logs/<case>.log. Prints PASS/FAIL. Exit 0/1.
@@ -167,6 +167,17 @@ ingle-leaf)
         --leaf LEAF=spark/LEAF.txt >/dev/null
     python3 scripts/check-ingle-leaf.py
     ;;
+ingle-keeper)
+    nasm -f bin -o spark/ingle.bin spark/ingle.asm
+    nasm -f bin -o spark/keeper.bin spark/keeper.asm
+    python3 -c "from pathlib import Path; Path('spark/hand.bin').write_bytes(bytes(32))"
+    make -C kernel ingle-bin >/dev/null
+    python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
+        --kernel kernel/kernel.ingle.bin --out kindling-ingle-keeper.img \
+        --spark ingle=spark/ingle.bin --spark keeper=spark/keeper.bin \
+        --leaf hand=spark/hand.bin >/dev/null
+    python3 scripts/check-ingle-keeper.py
+    ;;
 leaf)
     nasm -f bin -o spark/leaf.bin spark/leaf.asm
     make -C kernel leaf-bin >/dev/null
@@ -176,7 +187,7 @@ leaf)
     python3 scripts/check-leaf.py
     ;;
 "")
-    echo "usage: test-vm happy|house|ring3|reclaim|tale|spawn|splanc|ingle|ingle-leaf|leaf|<image> <want>..." >&2
+    echo "usage: test-vm happy|house|ring3|reclaim|tale|spawn|splanc|ingle|ingle-leaf|ingle-keeper|leaf|<image> <want>..." >&2
     exit 2
     ;;
 *)

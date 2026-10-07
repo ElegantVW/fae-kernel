@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## keeper-g37 (2026-10-07)
+
+- Spark `keeper` reads a name and stows it as the 32-byte leaf `hand` (wax is 32 zeros). Prompt `who keeps this fire`. `ingle` gleans that leaf: empty kindles `keeper` once; inked, it greets the name. A miss of `hand` or `keeper` is quiet. Exact measure — creating files waits.
+- BIOS ingle-keeper and QEMU efi-keeper two-boot the same disk: first boot types `gil`, second boot greets `gil` and never asks again. Paved `make image` packs `keeper` + wax `hand`. The live Databar is not written.
+
 ## stow-volume-g36 (2026-10-07)
 
 - `stow` still takes the cairn first (kind 0). When that name is missing (or there is no cairn) and MSC saw a FAT volume, it re-inks the volume's **root** by the same Gleam name. Exact measure. WRITE(10) each sector, READ(10) compare. The volume serial must be KINDLING `85C7-AA81`. A different volume is `-EPERM`. DMA dest stays the MSC page. Creating or growing files waits.

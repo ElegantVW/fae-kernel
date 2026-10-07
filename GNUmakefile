@@ -24,14 +24,14 @@ help:
 	@echo "  make flint     nasm the firmware (the striker)"
 	@echo "  make steel     cargo-cast the kernel crystal"
 	@echo "  make tinder    firmware ROM that catches"
-	@echo "  make image     cast the boot disk (KMAP + loader + kernel + ingle + leaf)"
+	@echo "  make image     cast the boot disk (KMAP + loader + kernel + ingle + leaf + keeper + hand)"
 	@echo "  make hearth    QEMU bowl (alias: serial-fw)"
 	@echo "  make kindle    flint + steel + hearth — paved fire"
 	@echo "  make hearth-see   same fire, window (lilac VGA)"
 	@echo "  make audit     several bowls; fail if a line is missing"
-	@echo "  make below     full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle+efi-usb+efi-usb-hub+efi-msc+efi-leaf+efi-stow+efi-sleep+efi-glass)"
+	@echo "  make below     full below gate (audit+trap+fmap+fw-trap+efi+efi-ingle+efi-usb+efi-usb-hub+efi-msc+efi-leaf+efi-stow+efi-keeper+efi-sleep+efi-glass)"
 	@echo "  make below-ten    gate × 10"
-	@echo "  make test      throwaway VMs (happy..leaf) + grove + efi-glass + efi-usb + efi-usb-hub + efi-msc + efi-leaf + efi-stow + efi-sleep"
+	@echo "  make test      throwaway VMs (happy..leaf) + grove + efi-glass + efi-usb + efi-usb-hub + efi-msc + efi-leaf + efi-stow + efi-keeper + efi-sleep"
 	@echo "  make serial-uefi   other people's firmware, our clothes"
 	@echo "  make serial        borrowed match (Limine)"
 	@echo "  make distclean     the forest forgets; the seed does not"
@@ -46,12 +46,15 @@ tinder: flint
 hearth: serial-fw
 kindle: serial-fw
 image: $(IMAGE)
-$(IMAGE): flint steel $(LD_BIN) scripts/mkimg.py spark/ingle.asm spark/leaf.asm spark/LEAF.txt
+$(IMAGE): flint steel $(LD_BIN) scripts/mkimg.py spark/ingle.asm spark/leaf.asm spark/keeper.asm spark/LEAF.txt
 	$(NASM) -f bin -o spark/ingle.bin spark/ingle.asm
 	$(NASM) -f bin -o spark/leaf.bin spark/leaf.asm
+	$(NASM) -f bin -o spark/keeper.bin spark/keeper.asm
+	python3 -c "from pathlib import Path; Path('spark/hand.bin').write_bytes(bytes(32))"
 	python3 scripts/mkimg.py --loader $(LD_BIN) --kernel kernel/kernel.fw.bin \
 		--spark ingle=spark/ingle.bin --spark leaf=spark/leaf.bin \
-		--leaf LEAF=spark/LEAF.txt --out $@ --cairn-out spark/cairn.bin
+		--spark keeper=spark/keeper.bin --leaf LEAF=spark/LEAF.txt \
+		--leaf hand=spark/hand.bin --out $@ --cairn-out spark/cairn.bin
 
 $(LD_BIN): ld/cerne-ld.asm
 	$(NASM) -f bin -o $@ $<
@@ -71,6 +74,7 @@ test:
 	sh scripts/test-vm.sh splanc
 	sh scripts/test-vm.sh ingle
 	sh scripts/test-vm.sh ingle-leaf
+	sh scripts/test-vm.sh ingle-keeper
 	sh scripts/test-vm.sh leaf
 	python3 scripts/check-grove.py
 	$(MAKE) efi
@@ -82,6 +86,7 @@ test:
 	python3 scripts/check-efi-leaf.py
 	$(MAKE) -C kernel efi-tale
 	python3 scripts/check-efi-stow.py
+	python3 scripts/check-efi-keeper.py
 	python3 scripts/check-efi-sleep.py
 	@echo "kindling: test ok"
 hearth-see: image

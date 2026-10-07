@@ -61,9 +61,10 @@ private CR3: `kindling: spawn ok`, ember kindles `wick`, the second-leaf,
 `ud2`: `kindling: trap 6`, `the spark went out`, `gleam exit 1` — `stayed`
 is a lie.
 Feature `ingle-test` looses `ingle`: `kindling: ingle ok`, the spark writes
-`ingle`, `read` waits, Enter yields `the fire is lit`, then `ingle` kindles
-`leaf` once (a miss is quiet). A last word ≥ 0 writes `the light remains`.
-`read` until `q`, then `gleam exit 0`.
+`ingle`, greets an inked `hand` (or kindles `keeper` when that leaf is 32
+zero bytes), `read` waits, Enter yields `the fire is lit`, then `ingle`
+kindles `leaf` once (a miss is quiet). A last word ≥ 0 writes `the light remains`.
+`read` until `q`, then `gleam exit 0`. A miss of `hand` or `keeper` is quiet.
 Feature `leaf-test` looses `leaf`: `kindling: leaf ok`, the spark gleans
 `LEAF`, writes the page, `read` waits for `q`, then `gleam exit 0`.
 Feature `tale-test` on EFI (`efi-stow`) looses `tale` against a FAT slate:
