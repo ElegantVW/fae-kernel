@@ -2,7 +2,8 @@
 ; Flat binary, nasm -f bin, entry 0. Position-independent.
 ; House calls: write 2, read 10, stow 9, exit 1.
 ; The hand's measure is 32 (G36 exact-measure). Wax is 32 zeros.
-; An empty line refuses. Next boot ingle greets the name.
+; Printable keys echo; backspace edits. An empty line refuses.
+; Next boot ingle greets the name.
 
         bits    64
         default abs
@@ -37,11 +38,34 @@ start:
         mov     al, [rel key]
         cmp     al, 10
         je      .got
+        cmp     al, 8
+        je      .bksp
+        cmp     al, 0x20
+        jb      .more
+        cmp     al, 0x7E
+        ja      .more
         cmp     rbx, 31
         jae     .more                   ; cap 31; extra keys wait for newline
         lea     rdi, [rel namebuf]
         mov     [rdi + rbx], al
         inc     rbx
+        mov     rax, 2                  ; echo the glyph
+        mov     rdi, 1
+        lea     rsi, [rel key]
+        mov     rdx, 1
+        int     0xE0
+        jmp     .more
+.bksp:
+        test    rbx, rbx
+        jz      .more
+        dec     rbx
+        lea     rdi, [rel namebuf]
+        mov     byte [rdi + rbx], 0
+        mov     rax, 2                  ; glass backspace
+        mov     rdi, 1
+        lea     rsi, [rel key]
+        mov     rdx, 1
+        int     0xE0
         jmp     .more
 .got:
         cmp     byte [rel namebuf], 0

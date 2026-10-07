@@ -139,7 +139,7 @@ is the design working.
 - **splanc** — a spark that does not catch (G31). Irish *splanc*. `ud2`; the house names the miss.
 - **second-leaf** — `the cup is its own`.
 - **ingle** — the greeter spark, the desktop (G34). Writes its name, greets an inked `hand`, reads a line, says the fire is lit, kindles `leaf` once, writes `the light remains` when that spark smoors, waits for `q`. An empty hand kindles `keeper` once. Packed on `make image` with `leaf`, `LEAF`, `keeper`, and wax `hand`; EFI copies the blob from `EFI/BOOT/CAIRN`. A miss of `leaf`, `hand`, or `keeper` is quiet.
-- **keeper** — G37 Setup Assistant spark. Reads a name, stows it as the 32-byte `hand`. Prompt `who keeps this fire`. One hand on this box.
+- **keeper** — G37 Setup Assistant spark. Reads a name, stows it as the 32-byte `hand`. Prompt `who keeps this fire`. Printable keys echo; backspace edits (G38). One hand on this box.
 - **hand** — G37 keeper leaf. Measure 32. Wax is 32 zeros. Next boot `ingle` greets the name.
 - **LEAF** — G32/G33 proof leaf. Page `the volume speaks`. Cairn on the paved / BIOS leaf image; FAT root on QEMU efi-msc / efi-leaf / the Databar.
 - **slate** — G19/G36 proof leaf. Ten bytes, wax `wax waits` then ink `ink holds`. Cairn on the BIOS tale image; FAT root (LFN `slate`) on QEMU efi-stow. Volume serial KINDLING `85C7-AA81`.

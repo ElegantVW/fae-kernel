@@ -323,6 +323,15 @@ fn putc(b: u8, vga: bool) {
         c = 0;
     } else if b == b'\r' {
         c = 0;
+    } else if b == 8 {
+        if c > 0 {
+            c -= 1;
+            if vga {
+                vga_cell(r, c, b' ', ATTR_LILAC);
+            } else {
+                blit_char(gop_x(c), gop_y(r), b' ', LILAC);
+            }
+        }
     } else if (0x20..0x7F).contains(&b) {
         if vga {
             vga_cell(r, c, b, ATTR_LILAC);

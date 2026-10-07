@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → loader (off the disk) → Kindling spark. House light (G15–G37) is on.
+Firmware → loader (off the disk) → Kindling spark. House light (G15–G38) is on.
 Linux ELF waits on its own gate. This file staying green is still the law.
 
 Run: `make below`  
@@ -57,6 +57,7 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G35 | Spawn from the volume — cairn first, then FAT root, 64 KiB raw bin | efi-msc ingle-only cairn + LFN `leaf`; `the light remains` | yes |
 | G36 | Stow on the volume — WRITE(10)+reread, KINDLING `85C7-AA81`, exact measure | efi-stow two-boot: `stowed` then `kept` | yes |
 | G37 | Keeper — one name on the volume; next boot ingle greets it | ingle-keeper + efi-keeper two-boot: `gil`, never re-asks | yes |
+| G38 | The word is visible — keeper echoes name keys; glass backspace | ingle-keeper / efi-keeper: `gix` BS `l` lands `gil` | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 

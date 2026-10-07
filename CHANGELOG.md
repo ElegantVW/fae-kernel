@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## echo-g38 (2026-10-07)
+
+- `keeper` writes each printable name key as it is read, so the glass shows the word while it is typed. Backspace drops the last glyph. Glass `putc` treats `0x08` as cursor-left and erase.
+- ingle-keeper / efi-keeper type `gix`, backspace, `l` — transcript echoes, stored name is `gil`.
+
 ## keeper-g37 (2026-10-07)
 
 - Spark `keeper` reads a name and stows it as the 32-byte leaf `hand` (wax is 32 zeros). Prompt `who keeps this fire`. `ingle` gleans that leaf: empty kindles `keeper` once; inked, it greets the name. A miss of `hand` or `keeper` is quiet. Exact measure — creating files waits.

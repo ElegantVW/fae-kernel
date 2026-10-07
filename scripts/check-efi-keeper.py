@@ -2,8 +2,9 @@
 """EFI keeper: ingle inks the volume hand; a second boot greets it.
 
 Happy BOOTX64. Cairn has only ingle. FAT32 at LBA 2048 is KINDLING
-`85C7-AA81` with wax LFN `hand` (32 zeros) and LFN `keeper`. Type gil,
-Enter lights the fire, q leaves. Boot2 greets gil and never asks.
+`85C7-AA81` with wax LFN `hand` (32 zeros) and LFN `keeper`. Keys echo:
+type gix, backspace, l so the glass shows gil. Enter lights the fire,
+q leaves. Boot2 greets gil and never asks.
 Does not touch the live Databar.
 """
 from __future__ import annotations
@@ -170,9 +171,22 @@ def send_keys(sock: socket.socket, keys: str) -> None:
     for ch in keys:
         if ch == "\n":
             sock.sendall(b"sendkey ret\n")
+        elif ch == "\b":
+            sock.sendall(b"sendkey backspace\n")
         else:
             sock.sendall(f"sendkey {ch}\n".encode())
         read_until(sock, "(qemu)", 2)
+
+
+def crush(s: str) -> str:
+    out: list[str] = []
+    for c in s:
+        if c == "\b" or c == "\x08":
+            if out:
+                out.pop()
+        else:
+            out.append(c)
+    return "".join(out)
 
 
 def boot_once(code: Path) -> subprocess.Popen:
@@ -339,11 +353,21 @@ def main() -> int:
         if sock is None:
             print("FAIL efi-keeper (no monitor)")
             return 1
-        send_keys(sock, NAME + "\n")
+        send_keys(sock, "gix\bl\n")
         serial = serial_has(NAME, 8)
         t = serial.replace("\r", "")
-        if NAME not in t:
-            print("FAIL efi-keeper (name never spoke on first boot)")
+        mark = t.find("who keeps this fire")
+        if mark < 0:
+            print("FAIL efi-keeper (prompt vanished)")
+            print(serial[-600:])
+            return 1
+        echoed = crush(t[mark:])
+        if "gix" not in t:
+            print("FAIL efi-keeper (name keys never echoed)")
+            print(serial[-600:])
+            return 1
+        if NAME not in echoed:
+            print("FAIL efi-keeper (echo+backspace did not land gil)")
             print(serial[-600:])
             return 1
         send_keys(sock, "\n")
