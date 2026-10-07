@@ -2,11 +2,12 @@
 """EFI keeper: the book. Create, hall, choose, split.
 
 Happy BOOTX64. Cairn has only ingle. FAT32 at LBA 2048 is KINDLING
-`85C7-AA81` with wax LFN `hand` (32), `hands`/`twin` (716), LFN `keeper`.
-First boot creates gil with word tinder. Hall answers: the name is cut,
-the word sleeps in the twin. Boot2 is the hall: n oak, choose 2 (this
-fire knows you). Dismiss gives the name back. A flipped twin byte prints
-`the book is split`. Ciphertexts differ. Does not touch the live Databar.
+`85C7-AA81` with LFN `keeper` and no wax book leaves. First boot creates
+`hands`/`twin`/`hand` (716/716/32) and gil with word tinder. Hall answers:
+the name is cut, the word sleeps in the twin. Boot2 is the hall: n oak,
+choose 2 (this fire knows you). Dismiss gives the name back. A flipped
+twin byte prints `the book is split`. A second stick with wax 716/32 still
+enlists. Ciphertexts differ. Does not touch the live Databar.
 """
 from __future__ import annotations
 
@@ -159,6 +160,139 @@ def plant_fat32(img: bytearray, files: list[tuple[str, bytes]], part_lba: int = 
     img[fat2 : fat2 + 16 * 512] = img[fat1 : fat1 + 16 * 512]
 
 
+def write_stick(spark: bytes, wax_book: bool) -> None:
+    img = bytearray(2 * 1024 * 1024)
+    img[510] = 0x55
+    img[511] = 0xAA
+    img[446 + 4] = 0x0C
+    img[446 + 8 : 446 + 12] = PART_LBA.to_bytes(4, "little")
+    img[446 + 12 : 446 + 16] = (2048).to_bytes(4, "little")
+    files: list[tuple[str, bytes]] = [("keeper", spark)]
+    if wax_book:
+        files = [
+            ("hand", bytes(HAND_LEN)),
+            ("keeper", spark),
+            ("hands", bytes(SEAL_LEN)),
+            ("twin", bytes(SEAL_LEN)),
+        ]
+    plant_fat32(img, files)
+    fat = PART_LBA * 512
+    if int.from_bytes(img[fat + 67 : fat + 71], "little") != KINDLING_VOL:
+        raise SystemExit("FAIL efi-keeper (planted volume serial is not KINDLING)")
+    Path(IMG).write_bytes(img)
+
+
+def fat32_meta(img: bytes, part_lba: int = PART_LBA) -> tuple[int, int, int, int]:
+    fat = part_lba * 512
+    reserved = int.from_bytes(img[fat + 14 : fat + 16], "little")
+    fats = img[fat + 16]
+    fat_sz = int.from_bytes(img[fat + 36 : fat + 40], "little")
+    spc = img[fat + 13]
+    root_clus = int.from_bytes(img[fat + 44 : fat + 48], "little")
+    fat1 = fat + reserved * 512
+    data = fat1 + fats * fat_sz * 512
+    return fat1, data, spc, root_clus
+
+
+def fat_next32(img: bytes, fat1: int, clus: int) -> int:
+    off = fat1 + clus * 4
+    v = int.from_bytes(img[off : off + 4], "little") & 0x0FFFFFFF
+    if v >= 0x0FFFFFF8:
+        return 0
+    return v
+
+
+def walk_root(img: bytes, part_lba: int = PART_LBA) -> dict[str, tuple[int, int]]:
+    """LFN (or 8.3-only) name → (data offset in the image, size)."""
+    fat1, data, spc, root_clus = fat32_meta(img, part_lba)
+    bpc = spc * 512
+    files: dict[str, tuple[int, int]] = {}
+    lfn_map: dict[int, list[int]] = {}
+    clus = root_clus
+    seen = 0
+    while clus >= 2 and seen < 256:
+        base = data + (clus - 2) * bpc
+        for e in range(0, bpc, 32):
+            ent = img[base + e : base + e + 32]
+            if len(ent) < 32:
+                return files
+            first = ent[0]
+            if first == 0:
+                return files
+            if first == 0xE5:
+                lfn_map.clear()
+                continue
+            attr = ent[11]
+            if attr == 0x0F:
+                seq = first & 0x3F
+                chars: list[int] = []
+                for start, n in ((1, 5), (14, 6), (28, 2)):
+                    for i in range(n):
+                        chars.append(ent[start + 2 * i] | (ent[start + 2 * i + 1] << 8))
+                lfn_map[seq] = chars
+                continue
+            if attr & 0x18:
+                lfn_map.clear()
+                continue
+            name = ""
+            if lfn_map:
+                chars = []
+                i = 1
+                while i in lfn_map:
+                    chars.extend(lfn_map[i])
+                    i += 1
+                s: list[str] = []
+                for cp in chars:
+                    if cp == 0:
+                        break
+                    if 32 <= cp < 127:
+                        s.append(chr(cp))
+                name = "".join(s)
+                lfn_map.clear()
+            else:
+                base_n = ent[0:8].decode("ascii", "replace").rstrip()
+                ext = ent[8:11].decode("ascii", "replace").rstrip()
+                name = f"{base_n}.{ext}" if ext else base_n
+            hi = int.from_bytes(ent[20:22], "little")
+            lo = int.from_bytes(ent[26:28], "little")
+            size = int.from_bytes(ent[28:32], "little")
+            first_clus = (hi << 16) | lo
+            off = data + (first_clus - 2) * bpc if first_clus >= 2 else 0
+            if name:
+                files[name] = (off, size)
+        nxt = fat_next32(img, fat1, clus)
+        if nxt == 0:
+            break
+        clus = nxt
+        seen += 1
+    return files
+
+
+def remember_book(img: bytes) -> str | None:
+    files = walk_root(img)
+    for nm, sz in (("hands", SEAL_LEN), ("twin", SEAL_LEN), ("hand", HAND_LEN)):
+        if nm not in files:
+            return f"create never laid {nm}"
+        off, size = files[nm]
+        if size != sz:
+            return f"{nm} is {size}, want {sz}"
+        LOCS[nm] = off
+    hoff = LOCS["hand"]
+    if img[hoff : hoff + len(NAME)] != NAME.encode() or img[hoff + len(NAME)] != 0:
+        return "WRITE(10) never landed the name"
+    hands = img[LOCS["hands"] : LOCS["hands"] + SEAL_LEN]
+    twin = img[LOCS["twin"] : LOCS["twin"] + SEAL_LEN]
+    if hands == twin:
+        return "hands and twin ciphertexts compare equal"
+    if all(b == 0 for b in hands) or all(b == 0 for b in twin):
+        return "book still wax after enlist"
+    if WORD.encode() in img:
+        return "the word is on the disk"
+    if NAME.encode() in hands and NAME.encode() in twin:
+        return "keeper names sit in the sealed blobs"
+    return None
+
+
 def read_until(sock: socket.socket, mark: str, timeout: float) -> str:
     buf = ""
     end = time.time() + timeout
@@ -308,6 +442,41 @@ def wait_greet(after: str, name: str, timeout: float) -> str:
     return text
 
 
+def proof_wax(code: Path, spark: bytes) -> int:
+    write_stick(spark, wax_book=True)
+    proc = boot_once(code)
+    sock = None
+    try:
+        serial = serial_has("who keeps this fire", 25)
+        t = serial.replace("\r", "")
+        if "who keeps this fire" not in t:
+            return fail("wax: no keeper prompt", serial)
+        sock = monitor()
+        if sock is None:
+            return fail("wax: no monitor")
+        send_keys(sock, f"{NAME}\n")
+        serial = serial_has("speak the word", 8)
+        send_keys(sock, f"{WORD}\n")
+        serial = serial_has("speak it again", 8)
+        send_keys(sock, f"{WORD}\n")
+        serial = serial_has(CUT, 8)
+        t = serial.replace("\r", "")
+        if CUT not in t:
+            return fail("wax: enlist did not cut the name", t)
+        serial = serial_has(SLEEP, 8)
+        t = serial.replace("\r", "")
+        if SLEEP not in t:
+            return fail("wax: enlist did not lay the word in the twin", t)
+    finally:
+        if sock is not None:
+            sock.close()
+        stop(proc)
+    miss = remember_book(Path(IMG).read_bytes())
+    if miss:
+        return fail("wax: " + miss)
+    return 0
+
+
 def enter_and_leave(sock: socket.socket) -> str | None:
     send_keys(sock, "\n")
     serial = serial_has("the fire is lit", 8)
@@ -377,26 +546,11 @@ def main() -> int:
     ESP.joinpath("EFI/BOOT").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(src, EFI)
     shutil.copyfile(cairn_blob, CAIRN)
-    img = bytearray(2 * 1024 * 1024)
-    img[510] = 0x55
-    img[511] = 0xAA
-    img[446 + 4] = 0x0C
-    img[446 + 8 : 446 + 12] = PART_LBA.to_bytes(4, "little")
-    img[446 + 12 : 446 + 16] = (2048).to_bytes(4, "little")
-    plant_fat32(
-        img,
-        [
-            ("hand", bytes(HAND_LEN)),
-            ("keeper", spark),
-            ("hands", bytes(SEAL_LEN)),
-            ("twin", bytes(SEAL_LEN)),
-        ],
-    )
-    fat = PART_LBA * 512
-    if int.from_bytes(img[fat + 67 : fat + 71], "little") != KINDLING_VOL:
-        print("FAIL efi-keeper (planted volume serial is not KINDLING)", file=sys.stderr)
+    write_stick(spark, wax_book=False)
+    planted = walk_root(Path(IMG).read_bytes())
+    if "hands" in planted or "twin" in planted or "hand" in planted:
+        print("FAIL efi-keeper (wax book files present on create proof)", file=sys.stderr)
         return 1
-    Path(IMG).write_bytes(img)
     shutil.copyfile(vars_src, VARS)
 
     proc = boot_once(code)
@@ -437,7 +591,7 @@ def main() -> int:
         if "*" not in after_word:
             return fail("word did not echo as stars", serial)
         send_keys(sock, f"{WORD}\n")
-        serial = serial_has(CUT, 8)
+        serial = serial_has(CUT, 15)
         t = serial.replace("\r", "")
         if CUT not in t:
             return fail("enlist did not cut the name", t)
@@ -459,21 +613,9 @@ def main() -> int:
             sock.close()
         stop(proc)
 
-    landed = Path(IMG).read_bytes()
-    hoff = LOCS["hand"]
-    if landed[hoff : hoff + len(NAME)] != NAME.encode() or landed[hoff + len(NAME)] != 0:
-        return fail("WRITE(10) never landed the name")
-    hands = landed[LOCS["hands"] : LOCS["hands"] + SEAL_LEN]
-    twin = landed[LOCS["twin"] : LOCS["twin"] + SEAL_LEN]
-    if hands == twin:
-        return fail("hands and twin ciphertexts compare equal")
-    if all(b == 0 for b in hands) or all(b == 0 for b in twin):
-        return fail("book still wax after enlist")
-    if WORD.encode() in landed:
-        return fail("the word is on the disk")
-    if NAME.encode() in hands and NAME.encode() in twin:
-        # names live inside the plaintext; ciphertext should hide them
-        return fail("keeper names sit in the sealed blobs")
+    miss = remember_book(Path(IMG).read_bytes())
+    if miss:
+        return fail(miss)
 
     proc = boot_once(code)
     sock = None
@@ -588,12 +730,16 @@ def main() -> int:
             return fail("split twin was not caught", serial)
         if "the fire is lit" in t:
             return fail("split book still lit the fire", serial)
-        print("ok   efi-keeper")
-        return 0
     finally:
         if sock is not None:
             sock.close()
         stop(proc)
+
+    wax = proof_wax(code, spark)
+    if wax != 0:
+        return wax
+    print("ok   efi-keeper")
+    return 0
 
 
 if __name__ == "__main__":

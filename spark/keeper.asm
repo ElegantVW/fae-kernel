@@ -85,13 +85,11 @@ start:
         call    tell_enlisted
         jmp     ok
 .enlist_fail:
-        cmp     rax, -5                 ; -EIO split
-        je      die
         cmp     rax, -19                ; -ENODEV shut
         je      die
         cmp     rax, -22                ; -EINVAL confirm
         je      .askword_first
-        jmp     .cycle
+        jmp     .cycle                  ; ink miss; split dies on the next roll
 
 .hall:
         WRITE   ask, 20

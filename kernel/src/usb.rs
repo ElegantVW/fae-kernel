@@ -1,7 +1,7 @@
 //! xHCI + HID boot keyboard + MSC (BOT). Event ring is polled.
 
 use core::cell::UnsafeCell;
-use core::sync::atomic::{compiler_fence, fence, Ordering};
+use core::sync::atomic::{Ordering, compiler_fence, fence};
 
 use crate::start::{serial_hex, serial_print};
 
@@ -91,6 +91,7 @@ struct FatVol {
     root_ent: u16,
     root_clus: u32,
     vol_id: u32,
+    tot_sec: u32,
 }
 
 struct Host {
@@ -128,6 +129,8 @@ struct Host {
     fat: bool,
     vol_ok: bool,
     vol: FatVol,
+    /// Next FAT32 cluster to try when allocating. Wraps at `max_clus`.
+    alloc_rover: u32,
 }
 
 struct HostCell(UnsafeCell<Option<Host>>);
@@ -463,11 +466,7 @@ fn slot_type_for(h: &Host, speed: u32, root_port: u32) -> u32 {
             return t;
         }
     }
-    if speed >= 4 {
-        h.st_usb3
-    } else {
-        h.st_usb2
-    }
+    if speed >= 4 { h.st_usb3 } else { h.st_usb2 }
 }
 
 fn enable_slot(h: &mut Host, ty: u32) -> Option<u8> {
@@ -485,11 +484,7 @@ fn enable_slot(h: &mut Host, ty: u32) -> Option<u8> {
     if let Some(s) = try_ty(h, ty) {
         return Some(s);
     }
-    if ty != 0 {
-        try_ty(h, 0)
-    } else {
-        None
-    }
+    if ty != 0 { try_ty(h, 0) } else { None }
 }
 
 fn bind_slot(h: &mut Host, slot: u8) {
@@ -1082,6 +1077,18 @@ fn r32le(a: u64) -> u32 {
     r8(a) as u32 | (r8(a + 1) as u32) << 8 | (r8(a + 2) as u32) << 16 | (r8(a + 3) as u32) << 24
 }
 
+fn w16le(a: u64, v: u16) {
+    w8(a, v as u8);
+    w8(a + 1, (v >> 8) as u8);
+}
+
+fn w32le(a: u64, v: u32) {
+    w8(a, v as u8);
+    w8(a + 1, (v >> 8) as u8);
+    w8(a + 2, (v >> 16) as u8);
+    w8(a + 3, (v >> 24) as u8);
+}
+
 fn looks_fat(p: u64) -> bool {
     if r8(p + 510) != 0x55 || r8(p + 511) != 0xAA {
         return false;
@@ -1102,11 +1109,7 @@ fn fat_part_type(ty: u8) -> bool {
 fn lba32_at(a: u64) -> Option<u32> {
     let lo = r32le(a);
     let hi = r32le(a + 4);
-    if hi != 0 || lo == 0 {
-        None
-    } else {
-        Some(lo)
-    }
+    if hi != 0 || lo == 0 { None } else { Some(lo) }
 }
 
 /// MSC sees the whole disk. LBA 0 is often an MBR; FAT lives in a partition
@@ -1191,6 +1194,12 @@ fn parse_vol(lba: u32, p: u64) -> Option<FatVol> {
         && r8(p + 84) == b'T'
         && r8(p + 85) == b'3'
         && r8(p + 86) == b'2';
+    let tot16 = r16le(p + 19);
+    let tot32 = r32le(p + 32);
+    let tot_sec = if tot16 != 0 { tot16 as u32 } else { tot32 };
+    if tot_sec == 0 {
+        return None;
+    }
     if fat32 {
         let fat_sz = r32le(p + 36);
         if fat_sz == 0 {
@@ -1210,6 +1219,7 @@ fn parse_vol(lba: u32, p: u64) -> Option<FatVol> {
             root_ent: 0,
             root_clus,
             vol_id: r32le(p + 67),
+            tot_sec,
         })
     } else if fat12 {
         None
@@ -1224,6 +1234,7 @@ fn parse_vol(lba: u32, p: u64) -> Option<FatVol> {
             root_ent,
             root_clus: 0,
             vol_id: r32le(p + 39),
+            tot_sec,
         })
     } else {
         None
@@ -1346,8 +1357,16 @@ fn err(n: u64) -> u64 {
     0u64.wrapping_sub(n)
 }
 
+#[derive(Clone, Copy)]
+struct FatHit {
+    clus: u32,
+    size: u32,
+    dir_lba: u32,
+    dir_off: u16,
+}
+
 enum Scan {
-    Found(u32, u32),
+    Found(FatHit),
     End,
     More,
 }
@@ -1399,7 +1418,7 @@ pub fn fat_file_len(name: &[u8]) -> u64 {
         return err(EIO);
     }
     match find_root(h, name) {
-        Ok((_, size)) => size as u64,
+        Ok(hit) => hit.size as u64,
         Err(e) => err(e),
     }
 }
@@ -1420,11 +1439,11 @@ pub fn load_fat(name: &[u8], buf: u64, cap: u64) -> u64 {
         return err(EIO);
     }
     match find_root(h, name) {
-        Ok((clus, size)) => {
-            if size as u64 != cap {
+        Ok(hit) => {
+            if hit.size as u64 != cap {
                 return err(EIO);
             }
-            let n = read_chain(h, clus, size, buf, cap);
+            let n = read_chain(h, hit.clus, hit.size, buf, cap);
             if n != cap {
                 if (n as i64) < 0 {
                     return n;
@@ -1453,12 +1472,12 @@ pub fn glean_fat(name: &[u8], buf: u64, len: u64) -> u64 {
         return err(EIO);
     }
     match find_root(h, name) {
-        Ok((clus, size)) => read_chain(h, clus, size, buf, len),
+        Ok(hit) => read_chain(h, hit.clus, hit.size, buf, len),
         Err(e) => err(e),
     }
 }
 
-fn find_root(h: &mut Host, name: &[u8]) -> Result<(u32, u32), u64> {
+fn find_root(h: &mut Host, name: &[u8]) -> Result<FatHit, u64> {
     let vol = h.vol;
     if vol.fat16 {
         find_root16(h, &vol, name)
@@ -1484,7 +1503,7 @@ fn clus_lba(vol: &FatVol, clus: u32) -> u32 {
         .wrapping_add(clus.wrapping_sub(2).wrapping_mul(vol.spc as u32))
 }
 
-fn find_root16(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<(u32, u32), u64> {
+fn find_root16(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<FatHit, u64> {
     let secs = root16_secs(vol);
     if secs == 0 {
         return Err(ENOENT);
@@ -1500,11 +1519,12 @@ fn find_root16(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<(u32, u32), u6
         if k >= MAX_DIR_SEC {
             return Err(EIO);
         }
-        if !msc_read10(h, start.wrapping_add(k), h.data + MSC_DATA, 1, 512) {
+        let lba = start.wrapping_add(k);
+        if !msc_read10(h, lba, h.data + MSC_DATA, 1, 512) {
             return Err(EIO);
         }
-        match scan_sec(h.data + MSC_DATA, name, &mut lfn, &mut short) {
-            Scan::Found(c, sz) => return Ok((c, sz)),
+        match scan_sec(h.data + MSC_DATA, lba, name, &mut lfn, &mut short) {
+            Scan::Found(hit) => return Ok(hit),
             Scan::End => break,
             Scan::More => {}
         }
@@ -1513,7 +1533,7 @@ fn find_root16(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<(u32, u32), u6
     short.ok_or(ENOENT)
 }
 
-fn find_root32(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<(u32, u32), u64> {
+fn find_root32(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<FatHit, u64> {
     let mut clus = vol.root_clus;
     let mut secs = 0u32;
     let mut lfn = LfnAcc::new();
@@ -1528,11 +1548,12 @@ fn find_root32(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<(u32, u32), u6
             if secs >= MAX_DIR_SEC {
                 return Err(EIO);
             }
-            if !msc_read10(h, base.wrapping_add(s as u32), h.data + MSC_DATA, 1, 512) {
+            let lba = base.wrapping_add(s as u32);
+            if !msc_read10(h, lba, h.data + MSC_DATA, 1, 512) {
                 return Err(EIO);
             }
-            match scan_sec(h.data + MSC_DATA, name, &mut lfn, &mut short) {
-                Scan::Found(c, sz) => return Ok((c, sz)),
+            match scan_sec(h.data + MSC_DATA, lba, name, &mut lfn, &mut short) {
+                Scan::Found(hit) => return Ok(hit),
                 Scan::End => return short.ok_or(ENOENT),
                 Scan::More => {}
             }
@@ -1547,12 +1568,7 @@ fn find_root32(h: &mut Host, vol: &FatVol, name: &[u8]) -> Result<(u32, u32), u6
     }
 }
 
-fn scan_sec(
-    sec: u64,
-    name: &[u8],
-    lfn: &mut LfnAcc,
-    short: &mut Option<(u32, u32)>,
-) -> Scan {
+fn scan_sec(sec: u64, lba: u32, name: &[u8], lfn: &mut LfnAcc, short: &mut Option<FatHit>) -> Scan {
     let mut e = 0u64;
     while e < 512 {
         let ent = sec + e;
@@ -1570,15 +1586,11 @@ fn scan_sec(
         } else {
             match match_file(ent, name, lfn) {
                 Hit::Lfn => {
-                    let clus = (r16le(ent + 20) as u32) << 16 | r16le(ent + 26) as u32;
-                    let size = r32le(ent + 28);
-                    return Scan::Found(clus, size);
+                    return Scan::Found(hit_from_ent(ent, lba, e as u16));
                 }
                 Hit::Short => {
                     if short.is_none() {
-                        let clus = (r16le(ent + 20) as u32) << 16 | r16le(ent + 26) as u32;
-                        let size = r32le(ent + 28);
-                        *short = Some((clus, size));
+                        *short = Some(hit_from_ent(ent, lba, e as u16));
                     }
                     lfn.clear();
                 }
@@ -1588,6 +1600,15 @@ fn scan_sec(
         e += 32;
     }
     Scan::More
+}
+
+fn hit_from_ent(ent: u64, lba: u32, dir_off: u16) -> FatHit {
+    FatHit {
+        clus: (r16le(ent + 20) as u32) << 16 | r16le(ent + 26) as u32,
+        size: r32le(ent + 28),
+        dir_lba: lba,
+        dir_off,
+    }
 }
 
 fn fold_ascii(b: u8) -> u8 {
@@ -1908,8 +1929,611 @@ fn write_chain(h: &mut Host, mut clus: u32, size: u32, buf: u64) -> u64 {
     copied
 }
 
-/// Re-ink a named root file. Exact measure. KINDLING `85C7-AA81` only.
-/// WRITE(10) each sector, READ(10) compare. DMA dest stays MSC_DATA.
+fn speak_fat(s: &'static str) {
+    serial_print(s);
+    crate::glass::put_bytes(s.as_ptr(), s.len() as u64);
+}
+
+const FAT_EOC: u32 = 0x0FFF_FFFF;
+
+fn commit_sec(h: &mut Host, lba: u32) -> bool {
+    let mut k = 0u64;
+    while k < 512 {
+        w8(h.data + MSC_VERIFY + k, r8(h.data + MSC_DATA + k));
+        k += 1;
+    }
+    if !msc_write10(h, lba, h.data + MSC_DATA, 1, 512) {
+        return false;
+    }
+    if !msc_read10(h, lba, h.data + MSC_DATA, 1, 512) {
+        return false;
+    }
+    k = 0;
+    while k < 512 {
+        if r8(h.data + MSC_DATA + k) != r8(h.data + MSC_VERIFY + k) {
+            return false;
+        }
+        k += 1;
+    }
+    true
+}
+
+fn max_clus(vol: &FatVol) -> u32 {
+    let fat_secs = fats_secs(vol);
+    let root = if vol.fat16 { root16_secs(vol) } else { 0 };
+    let data = vol
+        .tot_sec
+        .saturating_sub(vol.reserved as u32)
+        .saturating_sub(fat_secs)
+        .saturating_sub(root);
+    2 + data / (vol.spc as u32)
+}
+
+fn clusters_for(vol: &FatVol, len: u64) -> u32 {
+    let bpc = vol.spc as u32 * 512;
+    if bpc == 0 {
+        return 0;
+    }
+    let n = ((len as u32).saturating_add(bpc - 1)) / bpc;
+    if n == 0 { 1 } else { n }
+}
+
+fn fat_get(h: &mut Host, clus: u32) -> Option<u32> {
+    if h.vol.fat16 {
+        return None;
+    }
+    let off = clus.saturating_mul(4);
+    let lba = h
+        .vol
+        .lba
+        .wrapping_add(h.vol.reserved as u32)
+        .wrapping_add(off / 512);
+    let ent = (off % 512) as u64;
+    if !msc_read10(h, lba, h.data + MSC_DATA, 1, 512) {
+        return None;
+    }
+    Some(r32le(h.data + MSC_DATA + ent) & 0x0FFF_FFFF)
+}
+
+fn fat_set(h: &mut Host, clus: u32, val: u32) -> bool {
+    if h.vol.fat16 {
+        return false;
+    }
+    let vol = h.vol;
+    let off = clus.saturating_mul(4);
+    let sec_off = off / 512;
+    let ent = (off % 512) as u64;
+    let mut fi = 0u8;
+    while fi < vol.fats {
+        let lba = vol
+            .lba
+            .wrapping_add(vol.reserved as u32)
+            .wrapping_add(fi as u32 * vol.fat_sz)
+            .wrapping_add(sec_off);
+        if !msc_read10(h, lba, h.data + MSC_DATA, 1, 512) {
+            return false;
+        }
+        let old = r32le(h.data + MSC_DATA + ent);
+        let new = (old & 0xF000_0000) | (val & 0x0FFF_FFFF);
+        w32le(h.data + MSC_DATA + ent, new);
+        if !commit_sec(h, lba) {
+            return false;
+        }
+        fi = fi.saturating_add(1);
+    }
+    true
+}
+
+fn alloc_scan(h: &mut Host, from: u32, to: u32) -> Option<u32> {
+    if h.vol.fat16 || from >= to {
+        return None;
+    }
+    let fat0 = h.vol.lba.wrapping_add(h.vol.reserved as u32);
+    let mut clus = from;
+    while clus < to {
+        let sec_i = clus / 128;
+        let lba = fat0.wrapping_add(sec_i);
+        if !msc_read10(h, lba, h.data + MSC_DATA, 1, 512) {
+            return None;
+        }
+        let sec_first = sec_i.saturating_mul(128);
+        let sec_last = sec_first.saturating_add(128);
+        let end = if to < sec_last { to } else { sec_last };
+        let mut e_clus = clus;
+        while e_clus < end {
+            let ent = (e_clus - sec_first) * 4;
+            let v = r32le(h.data + MSC_DATA + ent as u64) & 0x0FFF_FFFF;
+            if e_clus >= 2 && v == 0 {
+                if fat_set(h, e_clus, FAT_EOC) {
+                    h.alloc_rover = e_clus.saturating_add(1);
+                    return Some(e_clus);
+                }
+                return None;
+            }
+            e_clus = e_clus.saturating_add(1);
+        }
+        clus = end;
+    }
+    None
+}
+
+fn alloc_one(h: &mut Host) -> Option<u32> {
+    let max = max_clus(&h.vol);
+    if max <= 2 {
+        return None;
+    }
+    let start = if h.alloc_rover >= 2 && h.alloc_rover < max {
+        h.alloc_rover
+    } else {
+        2
+    };
+    if let Some(c) = alloc_scan(h, start, max) {
+        return Some(c);
+    }
+    if start > 2 {
+        alloc_scan(h, 2, start)
+    } else {
+        None
+    }
+}
+
+fn free_chain(h: &mut Host, first: u32) {
+    let mut c = first;
+    let mut n = 0u32;
+    while c >= 2 && n < MAX_FILE_SEC {
+        let next = match fat_get(h, c) {
+            Some(v) if v >= 0x0FFF_FFF8 => 0,
+            Some(v) if v >= 2 => v,
+            _ => 0,
+        };
+        let _ = fat_set(h, c, 0);
+        if next == 0 {
+            break;
+        }
+        c = next;
+        n = n.saturating_add(1);
+    }
+}
+
+fn alloc_chain(h: &mut Host, nclus: u32) -> Option<u32> {
+    if nclus == 0 || nclus > MAX_FILE_SEC {
+        return None;
+    }
+    let first = alloc_one(h)?;
+    let mut prev = first;
+    let mut i = 1u32;
+    while i < nclus {
+        let Some(c) = alloc_one(h) else {
+            free_chain(h, first);
+            return None;
+        };
+        if !fat_set(h, prev, c) {
+            free_chain(h, first);
+            return None;
+        }
+        prev = c;
+        i = i.saturating_add(1);
+    }
+    if !fat_set(h, prev, FAT_EOC) {
+        free_chain(h, first);
+        return None;
+    }
+    Some(first)
+}
+
+fn zero_chain(h: &mut Host, first: u32) -> bool {
+    let mut c = first;
+    let mut n = 0u32;
+    while c >= 2 && n < MAX_FILE_SEC {
+        if !zero_clus(h, c) {
+            return false;
+        }
+        let vol = h.vol;
+        match fat_next(h, &vol, c) {
+            Some(0) => return true,
+            Some(next) => c = next,
+            None => return false,
+        }
+        n = n.saturating_add(1);
+    }
+    false
+}
+
+fn zero_clus(h: &mut Host, clus: u32) -> bool {
+    if clus < 2 {
+        return false;
+    }
+    let base = clus_lba(&h.vol, clus);
+    let mut s = 0u8;
+    while s < h.vol.spc {
+        let mut i = 0u64;
+        while i < 512 {
+            w8(h.data + MSC_DATA + i, 0);
+            i += 1;
+        }
+        if !commit_sec(h, base.wrapping_add(s as u32)) {
+            return false;
+        }
+        s = s.saturating_add(1);
+    }
+    true
+}
+
+fn ascii_upper(b: u8) -> u8 {
+    if (b'a'..=b'z').contains(&b) {
+        b - 32
+    } else {
+        b
+    }
+}
+
+fn is_83_char(b: u8) -> bool {
+    matches!(
+        b,
+        b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'!'
+            | b'#'
+            | b'$'
+            | b'%'
+            | b'&'
+            | b'\''
+            | b'('
+            | b')'
+            | b'-'
+            | b'@'
+            | b'^'
+            | b'_'
+            | b'`'
+            | b'{'
+            | b'}'
+            | b'~'
+    )
+}
+
+fn make_83(name: &[u8], out: &mut [u8; 11]) {
+    let mut i = 0usize;
+    while i < 11 {
+        out[i] = b' ';
+        i += 1;
+    }
+    let mut ok = !name.is_empty() && name.len() <= 8;
+    i = 0;
+    while i < name.len() {
+        if name[i] == b'.' || !is_83_char(name[i]) {
+            ok = false;
+            break;
+        }
+        i += 1;
+    }
+    if ok {
+        i = 0;
+        while i < name.len() {
+            out[i] = ascii_upper(name[i]);
+            i += 1;
+        }
+        return;
+    }
+    let mut n = 0usize;
+    i = 0;
+    while i < name.len() && n < 6 {
+        let b = name[i];
+        if is_83_char(b) && b != b'.' {
+            out[n] = ascii_upper(b);
+            n += 1;
+        }
+        i += 1;
+    }
+    if n == 0 {
+        out[0] = b'X';
+        n = 1;
+    }
+    out[n] = b'~';
+    out[n + 1] = b'1';
+}
+
+fn short_cksum11(n: &[u8; 11]) -> u8 {
+    let mut sum = 0u8;
+    let mut i = 0usize;
+    while i < 11 {
+        sum = ((sum & 1) << 7).wrapping_add(sum >> 1).wrapping_add(n[i]);
+        i += 1;
+    }
+    sum
+}
+
+fn lfn_count(name: &[u8]) -> usize {
+    (name.len() + 12) / 13
+}
+
+fn put_ent(h: &mut Host, lba: u32, off: u16, ent: &[u8; 32]) -> bool {
+    if (off as u64) > 480 {
+        return false;
+    }
+    if !msc_read10(h, lba, h.data + MSC_DATA, 1, 512) {
+        return false;
+    }
+    let mut i = 0usize;
+    while i < 32 {
+        w8(h.data + MSC_DATA + off as u64 + i as u64, ent[i]);
+        i += 1;
+    }
+    commit_sec(h, lba)
+}
+
+fn fill_lfn(dst: &mut [u8; 32], seq: u8, ck: u8, name: &[u8], chunk_off: usize) {
+    let mut i = 0usize;
+    while i < 32 {
+        dst[i] = 0;
+        i += 1;
+    }
+    dst[0] = seq;
+    dst[11] = 0x0F;
+    dst[13] = ck;
+    const POS: [usize; 13] = [1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30];
+    i = 0;
+    while i < 13 {
+        let ni = chunk_off + i;
+        let (lo, hi) = if ni < name.len() {
+            (name[ni], 0u8)
+        } else if ni == name.len() {
+            (0, 0)
+        } else {
+            (0xFF, 0xFF)
+        };
+        dst[POS[i]] = lo;
+        dst[POS[i] + 1] = hi;
+        i += 1;
+    }
+}
+
+fn fill_83(dst: &mut [u8; 32], name11: &[u8; 11], clus: u32, size: u32) {
+    let mut i = 0usize;
+    while i < 32 {
+        dst[i] = 0;
+        i += 1;
+    }
+    i = 0;
+    while i < 11 {
+        dst[i] = name11[i];
+        i += 1;
+    }
+    dst[11] = 0x20;
+    dst[26] = clus as u8;
+    dst[27] = (clus >> 8) as u8;
+    dst[20] = (clus >> 16) as u8;
+    dst[21] = (clus >> 24) as u8;
+    dst[28] = size as u8;
+    dst[29] = (size >> 8) as u8;
+    dst[30] = (size >> 16) as u8;
+    dst[31] = (size >> 24) as u8;
+}
+
+fn dir_last_clus(h: &mut Host) -> Option<u32> {
+    let mut c = h.vol.root_clus;
+    let mut n = 0u32;
+    loop {
+        if c < 2 {
+            return None;
+        }
+        let vol = h.vol;
+        match fat_next(h, &vol, c) {
+            None => return None,
+            Some(0) => return Some(c),
+            Some(next) => {
+                c = next;
+                n = n.saturating_add(1);
+                if n >= MAX_DIR_SEC {
+                    return None;
+                }
+            }
+        }
+    }
+}
+
+fn dir_extend(h: &mut Host) -> Option<u32> {
+    let last = dir_last_clus(h)?;
+    let c = alloc_one(h)?;
+    if !fat_set(h, last, c) || !fat_set(h, c, FAT_EOC) || !zero_clus(h, c) {
+        let _ = fat_set(h, c, 0);
+        return None;
+    }
+    Some(c)
+}
+
+fn take_slot(slots: &mut [(u32, u16); 8], run: usize, lba: u32, off: u16) {
+    if run < 8 {
+        slots[run] = (lba, off);
+    }
+}
+
+/// Grow the root and append free slots onto an existing run (0xE5 tail or
+/// a 0 terminator that did not leave enough room in this cluster).
+fn extend_dir_slots(
+    h: &mut Host,
+    need: usize,
+    mut run: usize,
+    slots: &mut [(u32, u16); 8],
+) -> bool {
+    while run < need {
+        let Some(newc) = dir_extend(h) else {
+            return false;
+        };
+        let base = clus_lba(&h.vol, newc);
+        let mut s = 0u8;
+        while run < need && s < h.vol.spc {
+            let lba = base.wrapping_add(s as u32);
+            let mut off = 0u16;
+            while run < need && off <= 480 {
+                take_slot(slots, run, lba, off);
+                run += 1;
+                off = off.saturating_add(32);
+            }
+            s = s.saturating_add(1);
+        }
+    }
+    run == need
+}
+
+fn dir_find_slots(h: &mut Host, need: usize, slots: &mut [(u32, u16); 8]) -> bool {
+    if need == 0 || need > 8 {
+        return false;
+    }
+    let mut clus = h.vol.root_clus;
+    let mut secs = 0u32;
+    let mut run = 0usize;
+    loop {
+        if clus < 2 {
+            return false;
+        }
+        let base = clus_lba(&h.vol, clus);
+        let mut s = 0u8;
+        while s < h.vol.spc {
+            if secs >= MAX_DIR_SEC {
+                return false;
+            }
+            let lba = base.wrapping_add(s as u32);
+            if !msc_read10(h, lba, h.data + MSC_DATA, 1, 512) {
+                return false;
+            }
+            let mut e = 0u64;
+            while e < 512 {
+                let first = r8(h.data + MSC_DATA + e);
+                if first == 0 {
+                    let mut off = e as u16;
+                    let mut cur = lba;
+                    let mut ns = s;
+                    while run < need && off <= 480 {
+                        take_slot(slots, run, cur, off);
+                        run += 1;
+                        off = off.saturating_add(32);
+                    }
+                    ns = ns.saturating_add(1);
+                    while run < need && ns < h.vol.spc {
+                        cur = base.wrapping_add(ns as u32);
+                        off = 0;
+                        while run < need && off <= 480 {
+                            take_slot(slots, run, cur, off);
+                            run += 1;
+                            off = off.saturating_add(32);
+                        }
+                        ns = ns.saturating_add(1);
+                    }
+                    if run == need {
+                        return true;
+                    }
+                    return extend_dir_slots(h, need, run, slots);
+                }
+                if first == 0xE5 {
+                    take_slot(slots, run, lba, e as u16);
+                    run += 1;
+                    if run == need {
+                        return true;
+                    }
+                } else {
+                    run = 0;
+                }
+                e += 32;
+            }
+            secs = secs.saturating_add(1);
+            s = s.saturating_add(1);
+        }
+        let vol = h.vol;
+        match fat_next(h, &vol, clus) {
+            None => return false,
+            Some(0) => return extend_dir_slots(h, need, run, slots),
+            Some(n) => clus = n,
+        }
+    }
+}
+
+fn dir_insert(h: &mut Host, name: &[u8], clus: u32, size: u32) -> Result<(), u64> {
+    let nlfn = lfn_count(name);
+    if nlfn == 0 || nlfn > 7 {
+        return Err(EPERM);
+    }
+    let need = nlfn + 1;
+    let mut slots = [(0u32, 0u16); 8];
+    if !dir_find_slots(h, need, &mut slots) {
+        return Err(EIO);
+    }
+    let mut name11 = [b' '; 11];
+    make_83(name, &mut name11);
+    let ck = short_cksum11(&name11);
+    let mut ent = [0u8; 32];
+    let mut k = 0usize;
+    while k < nlfn {
+        let ord = nlfn - k;
+        let seq = if k == 0 {
+            (ord as u8) | 0x40
+        } else {
+            ord as u8
+        };
+        fill_lfn(&mut ent, seq, ck, name, (ord - 1) * 13);
+        let (lba, off) = slots[k];
+        if !put_ent(h, lba, off, &ent) {
+            return Err(EIO);
+        }
+        k += 1;
+    }
+    fill_83(&mut ent, &name11, clus, size);
+    let (lba, off) = slots[nlfn];
+    if !put_ent(h, lba, off, &ent) {
+        return Err(EIO);
+    }
+    Ok(())
+}
+
+fn patch_dirent(h: &mut Host, hit: &FatHit, clus: u32, size: u32) -> bool {
+    if !msc_read10(h, hit.dir_lba, h.data + MSC_DATA, 1, 512) {
+        return false;
+    }
+    let e = h.data + MSC_DATA + hit.dir_off as u64;
+    w16le(e + 26, clus as u16);
+    w16le(e + 20, (clus >> 16) as u16);
+    w32le(e + 28, size);
+    commit_sec(h, hit.dir_lba)
+}
+
+fn create_file(h: &mut Host, name: &[u8], len: u64) -> Result<u32, u64> {
+    if h.vol.fat16 {
+        return Err(EPERM);
+    }
+    let nclus = clusters_for(&h.vol, len);
+    if nclus == 0 {
+        return Err(EPERM);
+    }
+    let Some(clus) = alloc_chain(h, nclus) else {
+        return Err(EIO);
+    };
+    if !zero_chain(h, clus) {
+        free_chain(h, clus);
+        return Err(EIO);
+    }
+    match dir_insert(h, name, clus, len as u32) {
+        Ok(()) => Ok(clus),
+        Err(e) => {
+            free_chain(h, clus);
+            Err(e)
+        }
+    }
+}
+
+fn finish_write(h: &mut Host, clus: u32, len: u64, buf: u64) -> u64 {
+    let n = write_chain(h, clus, len as u32, buf);
+    if n != len {
+        if (n as i64) < 0 {
+            return n;
+        }
+        return err(EIO);
+    }
+    n
+}
+
+/// Re-ink a named root file, or create it when missing / empty.
+/// Exact measure. KINDLING `85C7-AA81` only. WRITE(10) each sector,
+/// READ(10) compare. DMA dest stays MSC_DATA. FAT32 create; FAT16 re-inks.
 pub fn stow_fat(name: &[u8], buf: u64, len: u64) -> u64 {
     if buf == 0 || len == 0 || len > GLEAN_MAX || name.is_empty() || name.len() > 64 {
         return err(EPERM);
@@ -1927,19 +2551,34 @@ pub fn stow_fat(name: &[u8], buf: u64, len: u64) -> u64 {
         return err(EPERM);
     }
     match find_root(h, name) {
-        Ok((clus, size)) => {
-            if size as u64 != len {
+        Ok(hit) if hit.size as u64 == len && hit.clus >= 2 => finish_write(h, hit.clus, len, buf),
+        Ok(hit) if hit.size == 0 && !h.vol.fat16 => {
+            let nclus = clusters_for(&h.vol, len);
+            if nclus == 0 {
                 return err(EPERM);
             }
-            let n = write_chain(h, clus, size, buf);
-            if n != len {
-                if (n as i64) < 0 {
-                    return n;
-                }
+            let Some(clus) = alloc_chain(h, nclus) else {
+                return err(EIO);
+            };
+            if !zero_chain(h, clus) {
+                free_chain(h, clus);
                 return err(EIO);
             }
-            n
+            if !patch_dirent(h, &hit, clus, len as u32) {
+                free_chain(h, clus);
+                return err(EIO);
+            }
+            finish_write(h, clus, len, buf)
         }
+        Ok(hit) if hit.size as u64 != len => {
+            speak_fat("the leaf is the wrong measure\n");
+            err(EPERM)
+        }
+        Ok(hit) => finish_write(h, hit.clus, len, buf),
+        Err(e) if e == ENOENT && !h.vol.fat16 => match create_file(h, name, len) {
+            Ok(clus) => finish_write(h, clus, len, buf),
+            Err(e) => err(e),
+        },
         Err(e) => err(e),
     }
 }
@@ -2447,7 +3086,9 @@ fn bringup(bar: u64, len: u64) -> bool {
             root_ent: 0,
             root_clus: 0,
             vol_id: 0,
+            tot_sec: 0,
         },
+        alloc_rover: 2,
     };
     power_ports(&mut h);
     settle(&mut h, 100);
@@ -2525,11 +3166,7 @@ pub fn volume_id() -> u32 {
 
 /// Glass/serial word after `msc`: `fat` when LBA 0 is a FAT boot sector.
 pub fn fat_line() -> &'static str {
-    if fat_live() {
-        "fat"
-    } else {
-        "no fat"
-    }
+    if fat_live() { "fat" } else { "no fat" }
 }
 
 /// Glass/serial word after `tick`: `msc` or the step that missed.

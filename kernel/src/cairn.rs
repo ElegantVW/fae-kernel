@@ -296,15 +296,16 @@ fn cairn_xor(base: u64, len: u64) -> u32 {
     x
 }
 
-/// Lay bytes down: re-ink a leaf with the same measure (`rdx` must equal the
-/// leaf's `datalen` — G2b keeps one shape, growing leaves is later work).
-/// Cairn first (kind 0). If that name is missing (or there is no cairn) and
-/// a FAT volume is live, the volume's root by the same Gleam name — WRITE(10)
-/// each sector, READ(10) compare, KINDLING `85C7-AA81` only. Cairn ink still
-/// goes through ATA, re-reads, and rewrites LBA0. Returns bytes laid or
-/// `-errno` (`EPERM` args/shape/wrong volume, `ENOENT` missing, `ENODEV` no
-/// cairn and no volume, `EIO` disk error or verify mismatch). Ink is for
-/// leaves — sparks refuse.
+/// Lay bytes down. Cairn first (kind 0): re-ink a leaf with the same
+/// measure (`rdx` must equal the leaf's `datalen`). If that name is missing
+/// (or there is no cairn) and a FAT volume is live, the volume's root by
+/// the same Gleam name — WRITE(10) each sector, READ(10) compare, KINDLING
+/// `85C7-AA81` only. FAT32 creates a missing or empty root file of `len`;
+/// a present file of another non-zero size is `-EPERM`. FAT16 re-inks only.
+/// Cairn ink still goes through ATA, re-reads, and rewrites LBA0. Returns
+/// bytes laid or `-errno` (`EPERM` args/shape/wrong volume/wrong measure,
+/// `ENOENT` FAT16 missing, `ENODEV` no cairn and no volume, `EIO` disk
+/// error or verify mismatch). Ink is for leaves — sparks refuse.
 pub fn stow(name_ptr: u64, buf: u64, len: u64) -> u64 {
     if buf == 0 || len == 0 || len > MAX_DATA {
         return err(EPERM);

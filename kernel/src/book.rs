@@ -353,10 +353,7 @@ fn save(book: &Book) -> Result<(), u64> {
             speak("the ink will not hold\n");
             return Err(err(EIO));
         }
-        Err(e) => {
-            speak("the ink will not hold\n");
-            return Err(err(e));
-        }
+        Err(e) => return ink_miss(e),
     }
     match stow_leaf(&TWIN_NAME, twin) {
         Ok(n) if n == SEAL_LEN as u64 => {}
@@ -364,10 +361,7 @@ fn save(book: &Book) -> Result<(), u64> {
             speak("the ink will not hold\n");
             return Err(err(EIO));
         }
-        Err(e) => {
-            speak("the ink will not hold\n");
-            return Err(err(e));
-        }
+        Err(e) => return ink_miss(e),
     }
     Ok(())
 }
@@ -401,6 +395,14 @@ fn pad_name(src: &[u8]) -> [u8; NAME_LEN] {
     n
 }
 
+fn ink_miss(e: u64) -> Result<(), u64> {
+    // Size miss already named the leaf. Wrong volume stays quiet.
+    if e != EPERM {
+        speak("the ink will not hold\n");
+    }
+    Err(err(e))
+}
+
 fn ink_hand(name: &[u8; NAME_LEN]) -> Result<(), u64> {
     match stow_leaf(&HAND_NAME, name) {
         Ok(n) if n == NAME_LEN as u64 => Ok(()),
@@ -408,10 +410,7 @@ fn ink_hand(name: &[u8; NAME_LEN]) -> Result<(), u64> {
             speak("the ink will not hold\n");
             Err(err(EIO))
         }
-        Err(e) => {
-            speak("the ink will not hold\n");
-            Err(err(e))
-        }
+        Err(e) => ink_miss(e),
     }
 }
 

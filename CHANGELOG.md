@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## ink-g42 (2026-10-07)
+
+- `stow` on a live KINDLING FAT32 volume creates a missing or empty root file of the asked measure (allocate clusters, LFN + 8.3, both FAT copies, WRITE(10)+reread). A present file of another non-zero size paints `the leaf is the wrong measure`. FAT16 still re-inks only. First boot can carve `hands` / `twin` / `hand` with no host wax. Ink miss stays in the hall; split still dies on the next `roll`.
+- efi-keeper plants only `keeper`; after enlist the volume has 716/716/32. Wax 716/32 still enlists. The live Databar is not written.
+
 ## hall-g41c (2026-10-07)
 
 - Iron looped `who keeps this fire` / `speak the word` / `speak it again`: vfat stores `hands` as 8.3 `HANDS` with no LFN, and glean/stow compared exact case, so enlist missed the leaf and restarted the name. LFN is exact and wins (`leaf` is the spark, not the 8.3 `LEAF` page). 8.3-only aliases fold (`hands` finds `HANDS`). Stow miss paints `the ink will not hold`.

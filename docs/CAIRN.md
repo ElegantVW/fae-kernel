@@ -99,10 +99,13 @@ first (kind 0). The ATA rite:
    cairn) and verify that sector too.
 
 When that name is missing (or there is no cairn) and MSC saw a FAT volume,
-`stow` re-inks the volume's **root** by the same Gleam name. Exact measure.
+`stow` takes the volume's **root** by the same Gleam name. Exact measure.
 WRITE(10) each sector, READ(10) compare. The volume serial must be KINDLING
 `85C7-AA81` (Linux vfat UUID). A different volume is `-EPERM`. DMA dest
-stays the MSC page. Creating or growing files waits.
+stays the MSC page. On FAT32 a missing or empty root file is created
+(allocate clusters, LFN + 8.3, both FAT copies). A present file of another
+non-zero size is `-EPERM` and the glass says `the leaf is the wrong measure`.
+FAT16 still re-inks only.
 
 Sparks run from a private pool copy, never in place: a spark's buf lives
 inside its own record, and running in place lets its writes perturb the image
