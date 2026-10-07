@@ -55,3 +55,39 @@ pub fn enable_fpu_sse() {
         );
     }
 }
+
+/// CPUID leaf 1 ECX bit 25.
+pub fn has_aes_ni() -> bool {
+    core::arch::x86_64::__cpuid(1).ecx & (1 << 25) != 0
+}
+
+/// CPUID leaf 1 ECX bit 30.
+pub fn has_rdrand() -> bool {
+    core::arch::x86_64::__cpuid(1).ecx & (1 << 30) != 0
+}
+
+/// One 64-bit RDRAND. None if the feature is missing or the instruction gives up.
+pub fn rdrand_u64() -> Option<u64> {
+    if !has_rdrand() {
+        return None;
+    }
+    let mut tries = 0u32;
+    while tries < 16 {
+        let v: u64;
+        let ok: u8;
+        unsafe {
+            asm!(
+                "rdrand {v}",
+                "setc {ok}",
+                v = out(reg) v,
+                ok = out(reg_byte) ok,
+                options(nomem, nostack),
+            );
+        }
+        if ok != 0 {
+            return Some(v);
+        }
+        tries = tries.saturating_add(1);
+    }
+    None
+}

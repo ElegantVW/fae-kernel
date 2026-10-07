@@ -170,12 +170,13 @@ ingle-leaf)
 ingle-keeper)
     nasm -f bin -o spark/ingle.bin spark/ingle.asm
     nasm -f bin -o spark/keeper.bin spark/keeper.asm
-    python3 -c "from pathlib import Path; Path('spark/hand.bin').write_bytes(bytes(32))"
+    python3 -c "from pathlib import Path; Path('spark/hand.bin').write_bytes(bytes(32)); Path('spark/hands.bin').write_bytes(bytes(716)); Path('spark/twin.bin').write_bytes(bytes(716))"
     make -C kernel ingle-bin >/dev/null
     python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
         --kernel kernel/kernel.ingle.bin --out kindling-ingle-keeper.img \
         --spark ingle=spark/ingle.bin --spark keeper=spark/keeper.bin \
-        --leaf hand=spark/hand.bin >/dev/null
+        --leaf hand=spark/hand.bin --leaf hands=spark/hands.bin \
+        --leaf twin=spark/twin.bin >/dev/null
     python3 scripts/check-ingle-keeper.py
     ;;
 leaf)

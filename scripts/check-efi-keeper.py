@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""EFI keeper: ingle inks the volume hand; a second boot greets it.
+"""EFI keeper: the book. Create, hall, choose, split.
 
 Happy BOOTX64. Cairn has only ingle. FAT32 at LBA 2048 is KINDLING
-`85C7-AA81` with wax LFN `hand` (32 zeros) and LFN `keeper`. Keys echo:
-type gix, backspace, l so the glass shows gil. Enter lights the fire,
-q leaves. Boot2 greets gil and never asks.
+`85C7-AA81` with wax LFN `hand` (32), `hands`/`twin` (716), LFN `keeper`.
+First boot creates gil with word tinder. Boot2 is the hall: n oak, choose 2.
+A flipped twin byte prints `the book is split`. Ciphertexts differ.
 Does not touch the live Databar.
 """
 from __future__ import annotations
@@ -42,11 +42,14 @@ OVMF_VARS = [
 ]
 
 NAME = "gil"
+NAME2 = "oak"
+WORD = "tinder"
 HAND_LEN = 32
-HAND_83 = b"HAND       "
-KEEPER_83 = b"KEEPER     "
+SEAL_LEN = 716
 KINDLING_VOL = 0x85C7AA81
 PART_LBA = 2048
+CPU = "qemu64,+aes,+rdrand"
+LOCS: dict[str, int] = {}
 
 
 def first_file(cands: list[Path]) -> Path | None:
@@ -61,6 +64,11 @@ def short_cksum(name11: bytes) -> int:
     for b in name11:
         s = (((s & 1) << 7) + (s >> 1) + b) & 0xFF
     return s
+
+
+def make_83(name: str) -> bytes:
+    base = name.upper()[:8]
+    return (base.ljust(8) + "   ").encode("ascii")
 
 
 def lfn_entry(long_name: str, name11: bytes) -> bytes:
@@ -86,8 +94,7 @@ def lfn_entry(long_name: str, name11: bytes) -> bytes:
     return bytes(ent)
 
 
-def plant_fat32(img: bytearray, spark: bytes, part_lba: int = PART_LBA, part_secs: int = 2048) -> None:
-    """Tiny FAT32: wax hand in cluster 3, keeper spark in cluster 4."""
+def plant_fat32(img: bytearray, files: list[tuple[str, bytes]], part_lba: int = PART_LBA, part_secs: int = 2048) -> None:
     fat = part_lba * 512
     img[fat : fat + 3] = b"\xeb\x58\x90"
     img[fat + 3 : fat + 11] = b"MSDOS5.0"
@@ -114,27 +121,37 @@ def plant_fat32(img: bytearray, spark: bytes, part_lba: int = PART_LBA, part_sec
     img[fat + 510] = 0x55
     img[fat + 511] = 0xAA
     fat1 = fat + 32 * 512
-    for clus, val in ((0, 0x0FFFFFF8), (1, 0x0FFFFFFF), (2, 0x0FFFFFFF), (3, 0x0FFFFFFF), (4, 0x0FFFFFFF)):
-        off = fat1 + clus * 4
+    data = fat + 64 * 512
+    entries = bytearray()
+    fatmap = {0: 0x0FFFFFF8, 1: 0x0FFFFFFF, 2: 0x0FFFFFFF}
+    clus = 3
+    LOCS.clear()
+    for lfn, blob in files:
+        nclus = max(1, (len(blob) + 511) // 512)
+        first = clus
+        LOCS[lfn] = data + (first - 2) * 512
+        for i in range(nclus):
+            nxt = 0x0FFFFFFF if i == nclus - 1 else clus + 1
+            fatmap[clus] = nxt
+            start = data + (clus - 2) * 512
+            chunk = blob[i * 512 : (i + 1) * 512]
+            img[start : start + len(chunk)] = chunk
+            clus += 1
+        name11 = make_83(lfn)
+        entries += lfn_entry(lfn, name11)
+        ent = bytearray(32)
+        ent[0:11] = name11
+        ent[11] = 0x20
+        ent[26:28] = (first & 0xFFFF).to_bytes(2, "little")
+        ent[20:22] = (first >> 16).to_bytes(2, "little")
+        ent[28:32] = len(blob).to_bytes(4, "little")
+        entries += bytes(ent)
+    img[data : data + len(entries)] = entries
+    for c, val in fatmap.items():
+        off = fat1 + c * 4
         img[off : off + 4] = (val & 0x0FFFFFFF).to_bytes(4, "little")
     fat2 = fat + (32 + 16) * 512
     img[fat2 : fat2 + 16 * 512] = img[fat1 : fat1 + 16 * 512]
-    data = fat + 64 * 512
-    img[data : data + 32] = lfn_entry("hand", HAND_83)
-    img[data + 32 : data + 43] = HAND_83
-    img[data + 43] = 0x20
-    img[data + 58 : data + 60] = (3).to_bytes(2, "little")
-    img[data + 60 : data + 64] = HAND_LEN.to_bytes(4, "little")
-    img[data + 64 : data + 96] = lfn_entry("keeper", KEEPER_83)
-    img[data + 96 : data + 107] = KEEPER_83
-    img[data + 107] = 0x20
-    img[data + 122 : data + 124] = (4).to_bytes(2, "little")
-    img[data + 124 : data + 128] = len(spark).to_bytes(4, "little")
-    img[data + 1024 : data + 1024 + len(spark)] = spark
-
-
-def hand_off() -> int:
-    return PART_LBA * 512 + 64 * 512 + 512
 
 
 def read_until(sock: socket.socket, mark: str, timeout: float) -> str:
@@ -204,6 +221,8 @@ def boot_once(code: Path) -> subprocess.Popen:
             QEMU,
             "-M",
             "q35",
+            "-cpu",
+            CPU,
             "-m",
             "256M",
             "-display",
@@ -263,6 +282,43 @@ def monitor() -> socket.socket | None:
     return sock
 
 
+def fail(msg: str, serial: str = "") -> int:
+    print(f"FAIL efi-keeper ({msg})")
+    if serial:
+        print(serial[-600:])
+    return 1
+
+
+def wait_greet(after: str, name: str, timeout: float) -> str:
+    end = time.time() + timeout
+    text = ""
+    while time.time() < end:
+        if Path(SER).is_file():
+            text = Path(SER).read_bytes().decode(errors="replace").replace("\r", "")
+            mark = text.rfind(after)
+            tail = crush(text[mark:]) if mark >= 0 else ""
+            if f"\n{name}\n" in tail or tail.endswith(f"\n{name}") or tail.endswith(f"{name}\n"):
+                return text
+        time.sleep(0.05)
+    return text
+
+
+def enter_and_leave(sock: socket.socket) -> str | None:
+    send_keys(sock, "\n")
+    serial = serial_has("the fire is lit", 8)
+    t = serial.replace("\r", "")
+    if "the fire is lit" not in t:
+        return "no fire"
+    send_keys(sock, "q")
+    serial = serial_has("kindling: gleam exit 0", 8)
+    t = serial.replace("\r", "")
+    if "kindling: gleam exit 0" not in t:
+        return "no gleam exit 0"
+    if WORD in t:
+        return "the word leaked on serial"
+    return None
+
+
 def main() -> int:
     for p in (MON, SER, VARS, ERR, IMG):
         try:
@@ -292,8 +348,8 @@ def main() -> int:
         cwd=ROOT,
     )
     spark = (ROOT / "spark" / "keeper.bin").read_bytes()
-    if not spark or len(spark) > 512:
-        print("FAIL efi-keeper (keeper spark empty or bigger than one cluster)", file=sys.stderr)
+    if not spark or len(spark) > 8192:
+        print("FAIL efi-keeper (keeper spark empty or too big)", file=sys.stderr)
         return 1
     cairn_blob = ROOT / "spark" / "cairn-ingle.bin"
     subprocess.check_call(
@@ -322,7 +378,15 @@ def main() -> int:
     img[446 + 4] = 0x0C
     img[446 + 8 : 446 + 12] = PART_LBA.to_bytes(4, "little")
     img[446 + 12 : 446 + 16] = (2048).to_bytes(4, "little")
-    plant_fat32(img, spark)
+    plant_fat32(
+        img,
+        [
+            ("hand", bytes(HAND_LEN)),
+            ("keeper", spark),
+            ("hands", bytes(SEAL_LEN)),
+            ("twin", bytes(SEAL_LEN)),
+        ],
+    )
     fat = PART_LBA * 512
     if int.from_bytes(img[fat + 67 : fat + 71], "little") != KINDLING_VOL:
         print("FAIL efi-keeper (planted volume serial is not KINDLING)", file=sys.stderr)
@@ -336,104 +400,168 @@ def main() -> int:
         serial = serial_has("kindling: ingle ok\ningle\n", 25)
         t = serial.replace("\r", "")
         if "kindling: fat" not in t:
-            print("FAIL efi-keeper (no fat)")
-            print(serial[-600:])
-            return 1
+            return fail("no fat", serial)
         if "kindling: ingle ok\ningle\n" not in t:
-            print("FAIL efi-keeper (spark never wrote its name)")
-            print(serial[-600:])
-            return 1
+            return fail("spark never wrote its name", serial)
         serial = serial_has("who keeps this fire", 8)
         t = serial.replace("\r", "")
         if "who keeps this fire" not in t:
-            print("FAIL efi-keeper (no keeper prompt on first boot)")
-            print(serial[-600:])
-            return 1
+            return fail("no keeper prompt on first boot", serial)
         sock = monitor()
         if sock is None:
-            print("FAIL efi-keeper (no monitor)")
-            return 1
+            return fail("no monitor")
         send_keys(sock, "gix\bl\n")
-        serial = serial_has(NAME, 8)
+        serial = serial_has("speak the word", 8)
         t = serial.replace("\r", "")
         mark = t.find("who keeps this fire")
         if mark < 0:
-            print("FAIL efi-keeper (prompt vanished)")
-            print(serial[-600:])
-            return 1
+            return fail("prompt vanished", serial)
         echoed = crush(t[mark:])
         if "gix" not in t:
-            print("FAIL efi-keeper (name keys never echoed)")
-            print(serial[-600:])
-            return 1
+            return fail("name keys never echoed", serial)
         if NAME not in echoed:
-            print("FAIL efi-keeper (echo+backspace did not land gil)")
-            print(serial[-600:])
-            return 1
-        send_keys(sock, "\n")
-        serial = serial_has("the fire is lit", 8)
+            return fail("echo+backspace did not land gil", serial)
+        send_keys(sock, f"{WORD}\n")
+        serial = serial_has("speak it again", 8)
         t = serial.replace("\r", "")
-        if "the fire is lit" not in t:
-            print("FAIL efi-keeper (no greeting on first boot)")
-            print(serial[-600:])
-            return 1
-        send_keys(sock, "q")
+        if "speak it again" not in t:
+            return fail("no confirm prompt", serial)
+        after_word = t[t.find("speak the word") :]
+        if WORD in after_word:
+            return fail("the word leaked on serial", serial)
+        if "*" not in after_word:
+            return fail("word did not echo as stars", serial)
+        send_keys(sock, f"{WORD}\n")
+        t = wait_greet("speak it again", NAME, 8)
+        tail = crush(t[t.rfind("speak it again") :]) if "speak it again" in t else t
+        if f"\n{NAME}\n" not in tail and not tail.endswith(f"{NAME}\n") and not tail.endswith(f"\n{NAME}"):
+            return fail("ingle did not greet after enlist", t)
+        err = enter_and_leave(sock)
+        if err:
+            return fail(err + " on first boot", t)
         sock.close()
         sock = None
-        serial = serial_has("kindling: gleam exit 0", 8)
-        t = serial.replace("\r", "")
-        if "kindling: gleam exit 0" not in t:
-            print("FAIL efi-keeper (no gleam exit 0 on first boot)")
-            print(serial[-600:])
-            return 1
     finally:
         if sock is not None:
             sock.close()
         stop(proc)
 
     landed = Path(IMG).read_bytes()
-    off = hand_off()
-    if landed[off : off + len(NAME)] != NAME.encode() or landed[off + len(NAME)] != 0:
-        print("FAIL efi-keeper (WRITE(10) never landed the name)")
-        return 1
+    hoff = LOCS["hand"]
+    if landed[hoff : hoff + len(NAME)] != NAME.encode() or landed[hoff + len(NAME)] != 0:
+        return fail("WRITE(10) never landed the name")
+    hands = landed[LOCS["hands"] : LOCS["hands"] + SEAL_LEN]
+    twin = landed[LOCS["twin"] : LOCS["twin"] + SEAL_LEN]
+    if hands == twin:
+        return fail("hands and twin ciphertexts compare equal")
+    if all(b == 0 for b in hands) or all(b == 0 for b in twin):
+        return fail("book still wax after enlist")
+    if WORD.encode() in landed:
+        return fail("the word is on the disk")
+    if NAME.encode() in hands and NAME.encode() in twin:
+        # names live inside the plaintext; ciphertext should hide them
+        return fail("keeper names sit in the sealed blobs")
 
     proc = boot_once(code)
     sock = None
     try:
-        serial = serial_has(f"ingle\n{NAME}\n", 25)
+        serial = serial_has("who keeps this fire", 25)
         t = serial.replace("\r", "")
-        if f"ingle\n{NAME}\n" not in t:
-            print("FAIL efi-keeper (second boot did not greet the name)")
-            print(serial[-600:])
-            return 1
-        if "who keeps this fire" in t:
-            print("FAIL efi-keeper (re-asked on second boot — ink never landed)")
-            print(serial[-600:])
-            return 1
+        if "who keeps this fire" not in t:
+            return fail("no hall on second boot", serial)
+        if "1 gil" not in t:
+            return fail("hall did not list gil", serial)
         sock = monitor()
         if sock is None:
-            print("FAIL efi-keeper (no monitor on second boot)")
-            return 1
-        send_keys(sock, "\n")
-        serial = serial_has("the fire is lit", 8)
+            return fail("no monitor on second boot")
+        send_keys(sock, "n")
+        serial = serial_has("who keeps this fire", 8)
         t = serial.replace("\r", "")
-        if "the fire is lit" not in t:
-            print("FAIL efi-keeper (no greeting on second boot)")
-            print(serial[-600:])
-            return 1
-        if "who keeps this fire" in t:
-            print("FAIL efi-keeper (re-asked on second boot — ink never landed)")
-            print(serial[-600:])
-            return 1
-        send_keys(sock, "q")
+        send_keys(sock, f"{NAME2}\n")
+        serial = serial_has("speak the word", 8)
+        if "speak the word" not in serial.replace("\r", ""):
+            return fail("no word prompt for new keeper", serial)
+        send_keys(sock, f"{WORD}\n")
+        serial = serial_has("speak it again", 8)
+        send_keys(sock, f"{WORD}\n")
+        serial = serial_has("2 oak", 8)
+        t = serial.replace("\r", "")
+        if "2 oak" not in t:
+            return fail("hall did not list oak after enlist", t)
+        send_keys(sock, "2")
+        serial = serial_has("speak the word", 8)
+        send_keys(sock, f"{WORD}\n")
+        t = wait_greet("speak the word", NAME2, 8)
+        tail = crush(t[t.rfind("speak the word") :]) if "speak the word" in t else t
+        if f"\n{NAME2}\n" not in tail and not tail.endswith(f"{NAME2}\n") and not tail.endswith(f"\n{NAME2}"):
+            return fail("choose 2 did not greet oak", t)
+        err = enter_and_leave(sock)
+        if err:
+            return fail(err + " after choose oak", t)
         sock.close()
         sock = None
-        serial = serial_has("kindling: gleam exit 0", 8)
+    finally:
+        if sock is not None:
+            sock.close()
+        stop(proc)
+
+    proc = boot_once(code)
+    sock = None
+    try:
+        serial = serial_has("who keeps this fire", 25)
         t = serial.replace("\r", "")
-        if "kindling: gleam exit 0" not in t:
-            print("FAIL efi-keeper (no gleam exit 0 on second boot)")
-            print(serial[-600:])
-            return 1
+        if "1 gil" not in t or "2 oak" not in t:
+            return fail("hall lost a keeper", t)
+        sock = monitor()
+        if sock is None:
+            return fail("no monitor on dismiss boot")
+        send_keys(sock, "d")
+        serial = serial_has("who keeps this fire", 8)
+        send_keys(sock, "1\n")
+        serial = serial_has("speak the word", 8)
+        send_keys(sock, f"{WORD}\n")
+        serial = serial_has("who keeps this fire", 8)
+        t = serial.replace("\r", "")
+        if "the last hand stays" in t:
+            return fail("dismissed a keeper that was not last, but last stayed", t)
+        send_keys(sock, "d")
+        serial = serial_has("who keeps this fire", 8)
+        send_keys(sock, "1\n")
+        serial = serial_has("speak the word", 8)
+        send_keys(sock, f"{WORD}\n")
+        serial = serial_has("the last hand stays", 8)
+        t = serial.replace("\r", "")
+        if "the last hand stays" not in t:
+            return fail("last keeper was dismissed", t)
+        send_keys(sock, "1")
+        serial = serial_has("speak the word", 8)
+        send_keys(sock, f"{WORD}\n")
+        t = wait_greet("speak the word", NAME2, 8)
+        tail = crush(t[t.rfind("speak the word") :]) if "speak the word" in t else t
+        if f"\n{NAME2}\n" not in tail and not tail.endswith(f"{NAME2}\n") and not tail.endswith(f"\n{NAME2}"):
+            return fail("remaining keeper did not greet", t)
+        err = enter_and_leave(sock)
+        if err:
+            return fail(err + " after last-hand proof", t)
+        sock.close()
+        sock = None
+    finally:
+        if sock is not None:
+            sock.close()
+        stop(proc)
+
+    split = bytearray(Path(IMG).read_bytes())
+    split[LOCS["twin"] + 20] ^= 0x01
+    Path(IMG).write_bytes(split)
+    proc = boot_once(code)
+    sock = None
+    try:
+        serial = serial_has("the book is split", 25)
+        t = serial.replace("\r", "")
+        if "the book is split" not in t:
+            return fail("split twin was not caught", serial)
+        if "the fire is lit" in t:
+            return fail("split book still lit the fire", serial)
         print("ok   efi-keeper")
         return 0
     finally:

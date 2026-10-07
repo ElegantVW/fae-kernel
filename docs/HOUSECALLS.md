@@ -15,7 +15,7 @@ Swift, purposeful, direct — no noise. Unknown refuses, never silently succeeds
 - Future: `syscall/sysret` for speed. `int 0xE0` first so the gate is simple
   and QEMU-provable. Same numbers survive the upgrade.
 
-## First set (v0)
+## Calls
 
 | # | Name | Args | Returns | Today |
 |---|---|---|---|---|
@@ -29,9 +29,13 @@ Swift, purposeful, direct — no noise. Unknown refuses, never silently succeeds
 | 7 | `flush` | — | `-EAGAIN` | shut (needs Lantern framebuffer) |
 | 8 | `glean` | `rdi` = name, `rsi` = buf, `rdx` = len | bytes or `-errno` | done (cairn leaves first; if that name is missing and a FAT volume is live, the volume's **root** by the same Gleam name, 1–64, no `/`. FAT is the medium — no 8.3 in the house call. Missing → `-ENOENT`; no cairn and no volume → `-ENODEV`; bad xor / bad chain → `-EIO`; bad args → `-EPERM`. Cap 1 MiB. Read only.) |
 | 9 | `stow` | `rdi` = name, `rsi` = buf, `rdx` = len (= `datalen`) | bytes or `-errno` | done (cairn leaves first, exact measure, ATA re-read + LBA0; if that name is missing and a FAT volume is live, the volume's **root** by the same Gleam name — WRITE(10) each sector, READ(10) compare, KINDLING `85C7-AA81` only. Wrong volume / wrong measure → `-EPERM`; missing → `-ENOENT`; no cairn and no volume → `-ENODEV`; verify mismatch → `-EIO`. Ink is for leaves — sparks refuse. Cap 1 MiB. Creating or growing files waits.) |
-| 10 | `read` | `rdi` = fd, `rsi` = buf, `rdx` = len | bytes or `-errno` | done on fd 0 (PS/2 ASCII **or** USB HID boot keyboard); other fd → `-EPERM`; neither 8042 nor xHCI kbd → `-EAGAIN`; blocks until a byte when live. Polls the 8042 data port and the xHCI event ring; `hlt` only when the PIT is armed (EFI has no IRQ0, iron IRQ1 often dies after ExitBootServices). Dark — the spark `write`s if the glyph should show (`keeper` echoes the name; glass `0x08` is backspace) |
+| 10 | `read` | `rdi` = fd, `rsi` = buf, `rdx` = len | bytes or `-errno` | done on fd 0 (PS/2 ASCII **or** USB HID boot keyboard); other fd → `-EPERM`; neither 8042 nor xHCI kbd → `-EAGAIN`; blocks until a byte when live. Polls the 8042 data port and the xHCI event ring; `hlt` only when the PIT is armed (EFI has no IRQ0, iron IRQ1 often dies after ExitBootServices). Dark — the spark `write`s if the glyph should show (`keeper` echoes the name; the word echoes as `*`; glass `0x08` is backspace) |
+| 11 | `roll` | `rdi` = buf, `rsi` = len (≥ 256) | count or `-errno` | done. Copies occupied keeper **names** (32-byte records, never verifiers) after unsealing `hands` and `twin` and comparing them. Empty / wax → `0`. Split → glass `the book is split`, `-EIO`. AES-NI or RDRAND miss → `the book stays shut`, `-ENODEV` |
+| 12 | `enlist` | `rdi` = name, `rsi` = word, `rdx` = confirm (NUL-terminated) | `0` or `-errno` | done. Confirm mismatch / empty → `-EINVAL` (no glass). Duplicate → `that hand is taken`, `-EEXIST`. Full (8) → `the book is full`, `-EPERM`. Seals both leaves with fresh nonces, inks `hand`. KINDLING `85C7-AA81` on FAT |
+| 13 | `choose` | `rdi` = name, `rsi` = word | `0` or `-errno` | done. Verifier match inks `hand` and returns 0. Miss → `the word fails`, `-EPERM`. Split refuses |
+| 14 | `dismiss` | `rdi` = name, `rsi` = word | `0` or `-errno` | done. Last live keeper → `the last hand stays`, `-EPERM`. Wrong word → `the word fails`. Clears the slot and reseals both leaves |
 
-Anything else → `-ENOSYS`.
+Anything else → `-ENOSYS`. Wrapping keys never leave the kernel. There is no generic cipher house call this sitting.
 
 ## Ring-3 init (first Gleam light)
 
@@ -61,10 +65,11 @@ private CR3: `kindling: spawn ok`, ember kindles `wick`, the second-leaf,
 `ud2`: `kindling: trap 6`, `the spark went out`, `gleam exit 1` — `stayed`
 is a lie.
 Feature `ingle-test` looses `ingle`: `kindling: ingle ok`, the spark writes
-`ingle`, greets an inked `hand` (or kindles `keeper` when that leaf is 32
-zero bytes), `read` waits, Enter yields `the fire is lit`, then `ingle`
+`ingle`, kindles `keeper` when that spark is present, greets an inked `hand`
+after last word 0, `read` waits, Enter yields `the fire is lit`, then `ingle`
 kindles `leaf` once (a miss is quiet). A last word ≥ 0 writes `the light remains`.
-`read` until `q`, then `gleam exit 0`. A miss of `hand` or `keeper` is quiet.
+`read` until `q`, then `gleam exit 0`. A miss of `keeper` is quiet. A last
+word other than 0 does not light the fire.
 Feature `leaf-test` looses `leaf`: `kindling: leaf ok`, the spark gleans
 `LEAF`, writes the page, `read` waits for `q`, then `gleam exit 0`.
 Feature `tale-test` on EFI (`efi-stow`) looses `tale` against a FAT slate:

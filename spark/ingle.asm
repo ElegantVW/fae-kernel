@@ -1,8 +1,9 @@
-; ingle — greeter spark, the desktop. Writes its name, greets the hand
-; if one is inked, reads a line, says the fire is lit, kindles leaf once,
-; writes the light remains when that spark smoors, reads until q, exits.
-; An empty hand (32 zero bytes) kindles keeper once so the next boot
-; greets that name. A miss of hand or keeper is quiet.
+; ingle — greeter spark, the desktop. Writes its name, kindles keeper
+; when that spark is present, greets the hand after a last word 0, reads
+; a line, says the fire is lit, kindles leaf once, writes the light remains
+; when that spark smoors, reads until q, exits.
+; A miss of keeper is quiet (Enter still lights the fire). A last word
+; other than 0 does not light the fire.
 ; Flat binary, nasm -f bin, entry 0.
 ; House calls: write 2, read 10, spawn 5, glean 8, exit 1.
 
@@ -16,19 +17,15 @@ start:
         mov     rdx, 6
         int     0xE0
 
-        mov     rax, 8                  ; glean "hand"
-        lea     rdi, [rel handname]
-        lea     rsi, [rel handbuf]
-        mov     rdx, 32
-        int     0xE0
-        test    rax, rax
-        js      .askenter               ; no leaf — skip
-        cmp     byte [rel handbuf], 0
-        jne     .sayname                ; already inked
         mov     rax, 5                  ; spawn "keeper"
         lea     rdi, [rel keepername]
         int     0xE0
-        mov     rax, 8                  ; glean again
+        test    rax, rax
+        js      .nokeeper               ; miss is quiet
+        test    rax, rax
+        jnz     .fail                   ; last word != 0 — no fire
+.nokeeper:
+        mov     rax, 8                  ; glean "hand"
         lea     rdi, [rel handname]
         lea     rsi, [rel handbuf]
         mov     rdx, 32

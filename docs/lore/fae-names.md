@@ -83,8 +83,11 @@ Do not propose these as new creature names. They are already working.
 | splanc | G31 test spark that does not catch. Irish *splanc* / flint-fire. `ud2`. Not Flint (signer) |
 | leaf | G33 spark: gleans `LEAF`, writes the page, reads until `q`. The Grove's leaves; not a signer |
 | ingle | G24 greeter spark, G34 desktop: greets an inked `hand`, kindles `leaf`, writes `the light remains`, waits for `q`. Scots fireplace. Not Hearth |
-| keeper | G37 Setup Assistant spark: reads a name, stows the `hand`. One hand on this box. English *keeper*, not a signer |
-| hand | G37 keeper leaf (32 bytes). Not a spark |
+| keeper | G37 Setup Assistant / G40 hall. English *keeper*, not a signer |
+| hand | G37/G39 chosen name leaf (32 bytes). Not a spark |
+| hands | G39 sealed book (roster of 8). Not a spark. Not Hearth |
+| twin | G39 snapshot of the book under a different wrap. Not a spark |
+| roll, enlist, choose, dismiss | G39 house calls 11–14 |
 | Seal, Rift, Goblin, Siren, Imp, Magpie, Ether, Scry, Spellbook, Scroll | Suite apps |
 | Aegis, Bulwark, Imbue, Menagerie, Fairy Lantern | Suite / engines |
 | Alchemy, Grimoire, Abacus, Quests, Hourglass, Almanac, Eye, Vault, Reflection, Tome, Zen, Tick, Summon, Purity, Sentinel, Ward | Suite |

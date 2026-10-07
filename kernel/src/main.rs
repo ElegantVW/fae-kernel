@@ -1,9 +1,12 @@
 #![no_std]
 #![no_main]
 
+mod aes;
 mod ata;
+mod book;
 mod cairn;
 mod cpu;
+mod sha256;
 mod gdt;
 mod glass;
 mod house;

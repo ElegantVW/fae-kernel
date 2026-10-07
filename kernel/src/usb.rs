@@ -2466,6 +2466,14 @@ pub fn fat_live() -> bool {
     unsafe { core::ptr::addr_of!(FAT).read() }
 }
 
+/// BPB volume id when a FAT volume is live, else 0 (cairn-only book).
+pub fn volume_id() -> u32 {
+    match host_mut() {
+        Some(h) if h.msc_slot != 0 && h.fat && h.vol_ok => h.vol.vol_id,
+        _ => 0,
+    }
+}
+
 /// Glass/serial word after `msc`: `fat` when LBA 0 is a FAT boot sector.
 pub fn fat_line() -> &'static str {
     if fat_live() {

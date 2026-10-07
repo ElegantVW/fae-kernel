@@ -268,12 +268,13 @@ python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
 echo "---- ingle-keeper ----"
 nasm -f bin -o spark/ingle.bin spark/ingle.asm
 nasm -f bin -o spark/keeper.bin spark/keeper.asm
-python3 -c "from pathlib import Path; Path('spark/hand.bin').write_bytes(bytes(32))"
+python3 -c "from pathlib import Path; Path('spark/hand.bin').write_bytes(bytes(32)); Path('spark/hands.bin').write_bytes(bytes(716)); Path('spark/twin.bin').write_bytes(bytes(716))"
 make -C kernel ingle-bin
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
   --kernel kernel/kernel.ingle.bin --out kindling-ingle-keeper.img \
   --spark ingle=spark/ingle.bin --spark keeper=spark/keeper.bin \
-  --leaf hand=spark/hand.bin
+  --leaf hand=spark/hand.bin --leaf hands=spark/hands.bin \
+  --leaf twin=spark/twin.bin
 python3 scripts/check-ingle-keeper.py
 # restore the paved kernel for later steps
 make steel >/dev/null
@@ -427,13 +428,14 @@ echo "---- paved cairn ----"
 nasm -f bin -o spark/ingle.bin spark/ingle.asm
 nasm -f bin -o spark/leaf.bin spark/leaf.asm
 nasm -f bin -o spark/keeper.bin spark/keeper.asm
-python3 -c "from pathlib import Path; Path('spark/hand.bin').write_bytes(bytes(32))"
+python3 -c "from pathlib import Path; Path('spark/hand.bin').write_bytes(bytes(32)); Path('spark/hands.bin').write_bytes(bytes(716)); Path('spark/twin.bin').write_bytes(bytes(716))"
 make steel >/dev/null
 python3 scripts/mkimg.py --loader ld/cerne-ld.bin \
   --kernel kernel/kernel.fw.bin --out kindling.img \
   --spark ingle=spark/ingle.bin --spark leaf=spark/leaf.bin \
   --spark keeper=spark/keeper.bin --leaf LEAF=spark/LEAF.txt \
-  --leaf hand=spark/hand.bin --cairn-out spark/cairn.bin
+  --leaf hand=spark/hand.bin --leaf hands=spark/hands.bin \
+  --leaf twin=spark/twin.bin --cairn-out spark/cairn.bin
 
 echo "---- stick ----"
 sh scripts/check-stick.sh

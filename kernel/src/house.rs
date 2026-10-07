@@ -18,6 +18,10 @@ pub const SPAWN: u64 = 5;
 pub const GRANT: u64 = 6;
 pub const FLUSH: u64 = 7;
 pub const READ: u64 = 10;
+pub const ROLL: u64 = crate::book::ROLL;
+pub const ENLIST: u64 = crate::book::ENLIST;
+pub const CHOOSE: u64 = crate::book::CHOOSE;
+pub const DISMISS: u64 = crate::book::DISMISS;
 
 const EPERM: u64 = 1;
 #[cfg(feature = "house-test")]
@@ -124,6 +128,10 @@ pub fn dispatch(n: u64, a0: u64, a1: u64, a2: u64) -> u64 {
         crate::cairn::GLEAN => crate::cairn::glean(a0, a1, a2),
         crate::cairn::STOW => crate::cairn::stow(a0, a1, a2),
         SPAWN => crate::cairn::spawn(a0),
+        ROLL => crate::book::roll(a0, a1),
+        ENLIST => crate::book::enlist(a0, a1, a2),
+        CHOOSE => crate::book::choose(a0, a1),
+        DISMISS => crate::book::dismiss(a0, a1),
         GRANT | FLUSH => err(EAGAIN),
         _ => err(ENOSYS),
     }
@@ -486,6 +494,10 @@ pub fn self_test() {
         if base & (1 << 11) == 0 {
             fail = 12; // LAPIC disabled at the MSR — MMIO was a whisper.
         }
+    }
+    let book = crate::book::self_test();
+    if book != 0 {
+        fail = book;
     }
     if fail != 0 {
         serial_print("kindling: house FAIL ");

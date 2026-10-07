@@ -1,5 +1,14 @@
 # fae-kernel changelog
 
+## book-g39 (2026-10-07)
+
+- House calls `roll` 11 / `enlist` 12 / `choose` 13 / `dismiss` 14. The kernel keeps a roster of 8 slots in leaves `hands` and `twin`, exact measure 716. Each is AES-256-GCM under a different wrapping key (`SHA-256("kindling-hands"||vol_id)` vs twin). Ciphertexts of the same book do not compare equal. User word is a verifier `SHA-256(salt||word||vol_id||name)`, not reversible. RDRAND salts and nonces; AES-NI required — a miss paints `the book stays shut`. Unseal both, byte-compare; mismatch paints `the book is split` and refuses the hall.
+- First boot (empty book, or G37 wax book with an inked `hand`): name (echoed), word (stars), word again, `enlist`. `ingle` always kindles `keeper` first; last word 0 greets `hand` and lights the fire.
+
+## hall-g40 (2026-10-07)
+
+- Non-empty book: keeper is the hall (`1 gil`, `n` a new keeper, `d` dismiss). Digit + word `choose`s and enters the paved house. Last keeper cannot be dismissed (`the last hand stays`). Wrong word paints `the word fails` and stays. ingle-keeper / efi-keeper: create `gil` with word `tinder`, hall choose, two keepers, dismiss, split twin. QEMU CPU `qemu64,+aes,+rdrand`. The live Databar is not written.
+
 ## echo-g38 (2026-10-07)
 
 - `keeper` writes each printable name key as it is read, so the glass shows the word while it is typed. Backspace drops the last glyph. Glass `putc` treats `0x08` as cursor-left and erase.

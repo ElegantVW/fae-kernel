@@ -3,9 +3,12 @@
 
 //! Our BOOTX64.EFI — other people's firmware, our kernel.
 
+mod aes;
 mod ata;
+mod book;
 mod cairn;
 mod cpu;
+mod sha256;
 mod gdt;
 mod glass;
 mod house;

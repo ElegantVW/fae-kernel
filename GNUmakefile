@@ -50,11 +50,12 @@ $(IMAGE): flint steel $(LD_BIN) scripts/mkimg.py spark/ingle.asm spark/leaf.asm 
 	$(NASM) -f bin -o spark/ingle.bin spark/ingle.asm
 	$(NASM) -f bin -o spark/leaf.bin spark/leaf.asm
 	$(NASM) -f bin -o spark/keeper.bin spark/keeper.asm
-	python3 -c "from pathlib import Path; Path('spark/hand.bin').write_bytes(bytes(32))"
+	python3 -c "from pathlib import Path; Path('spark/hand.bin').write_bytes(bytes(32)); Path('spark/hands.bin').write_bytes(bytes(716)); Path('spark/twin.bin').write_bytes(bytes(716))"
 	python3 scripts/mkimg.py --loader $(LD_BIN) --kernel kernel/kernel.fw.bin \
 		--spark ingle=spark/ingle.bin --spark leaf=spark/leaf.bin \
 		--spark keeper=spark/keeper.bin --leaf LEAF=spark/LEAF.txt \
-		--leaf hand=spark/hand.bin --out $@ --cairn-out spark/cairn.bin
+		--leaf hand=spark/hand.bin --leaf hands=spark/hands.bin \
+		--leaf twin=spark/twin.bin --out $@ --cairn-out spark/cairn.bin
 
 $(LD_BIN): ld/cerne-ld.asm
 	$(NASM) -f bin -o $@ $<
