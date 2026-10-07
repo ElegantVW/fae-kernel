@@ -139,7 +139,7 @@ is the design working.
 - **splanc** — a spark that does not catch (G31). Irish *splanc*. `ud2`; the house names the miss.
 - **second-leaf** — `the cup is its own`.
 - **ingle** — the greeter spark, the desktop (G34). Writes its name, kindles `keeper` when present, greets an inked `hand` after last word 0, reads a line, says the fire is lit, kindles `leaf` once, writes `the light remains` when that spark smoors, waits for `q`. Packed on `make image` with `leaf`, `LEAF`, `keeper`, wax `hand`, and wax `hands`/`twin`; EFI copies the blob from `EFI/BOOT/CAIRN`. A miss of `leaf` or `keeper` is quiet. A last word other than 0 does not light the fire.
-- **keeper** — G37 Setup Assistant, G40 hall. Empty book: name, word, word again, `enlist`. Later: list keepers; digit `choose`s, `n` enlists, `d` dismisses. Printable name keys echo; the word echoes as stars; backspace edits (G38).
+- **keeper** — G37 Setup Assistant, G40 hall. Empty book: name, word, word again, `enlist`. Later: list keepers; digit `choose`s, `n` enlists, `d` dismisses. Printable name keys echo; the word echoes as stars; backspace edits (G38). The hall answers (G41): `the name is cut`, `the word sleeps in the twin`, `this fire knows you`, `that name is given back`; a confirm miss is `the second word is a stranger`.
 - **hand** — G37/G39 chosen name. Measure 32. Wax is 32 zeros. `enlist`/`choose` ink it. `ingle` greets it after a successful last word 0.
 - **hands** — G39 book. Exact measure 716. AES-256-GCM under `SHA-256("kindling-hands"\|\|vol_id)`. Roster of 8 slots. Not a spark. FAT root on EFI / KINDLING; cairn on the BIOS hearth.
 - **twin** — G39 snapshot of the same plaintext book, different wrapping key. Byte-compare after unseal. Mismatch is `the book is split`.

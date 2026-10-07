@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## hall-answers-g41 (2026-10-07)
+
+- The hall answers. After `enlist` the glass writes `the name is cut` and `the word sleeps in the twin`. After `choose`, `this fire knows you`. After `dismiss`, `that name is given back`. Confirm mismatch stays in keeper: `the second word is a stranger` (no kernel call). Last hand still stays. ingle-keeper / efi-keeper greps those lines. Fresh start on KINDLING: wax `hand` / `hands` / `twin`.
+
 ## book-g39 (2026-10-07)
 
 - House calls `roll` 11 / `enlist` 12 / `choose` 13 / `dismiss` 14. The kernel keeps a roster of 8 slots in leaves `hands` and `twin`, exact measure 716. Each is AES-256-GCM under a different wrapping key (`SHA-256("kindling-hands"||vol_id)` vs twin). Ciphertexts of the same book do not compare equal. User word is a verifier `SHA-256(salt||word||vol_id||name)`, not reversible. RDRAND salts and nonces; AES-NI required — a miss paints `the book stays shut`. Unseal both, byte-compare; mismatch paints `the book is split` and refuses the hall.

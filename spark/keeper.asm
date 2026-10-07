@@ -1,5 +1,8 @@
 ; keeper — Setup Assistant and the hall.
-; First boot (empty book): name, word, word again, enlist, exit 0.
+; First boot (empty book): name, word, word again, enlist.
+; Answers: the name is cut / the word sleeps in the twin.
+; Choose: this fire knows you. Dismiss: that name is given back.
+; Confirm miss: the second word is a stranger.
 ; Later: list keepers; digit chooses, n enlists, d dismisses.
 ; The word echoes as stars. Name keys echo. Backspace edits.
 ; House calls: write 2, read 10, glean 8, roll 11, enlist 12,
@@ -79,6 +82,7 @@ start:
         int     0xE0
         test    rax, rax
         js      .enlist_fail
+        call    tell_enlisted
         jmp     ok
 .enlist_fail:
         cmp     rax, -5                 ; -EIO split
@@ -154,6 +158,7 @@ start:
         int     0xE0
         test    rax, rax
         js      .choose_fail
+        WRITE   knows, knows_len
         jmp     ok
 .choose_fail:
         cmp     rax, -5
@@ -180,6 +185,7 @@ start:
         int     0xE0
         test    rax, rax
         js      .enlist_fail
+        call    tell_enlisted
         jmp     .cycle
 
 .drop:
@@ -221,6 +227,7 @@ start:
         int     0xE0
         test    rax, rax
         js      .choose_fail
+        WRITE   given, given_len
         jmp     .cycle
 
 ok:
@@ -235,7 +242,7 @@ die:
         ud2
 
 ; ask_words: speak the word, read stars, speak it again, read stars.
-; rax=0 ok, rax=1 empty
+; rax=0 ok, rax=1 empty or the two words are not kin
 ask_words:
         WRITE   wordp, 15
         lea     r12, [rel wordbuf]
@@ -244,6 +251,7 @@ ask_words:
         call    read_line
         test    rbx, rbx
         jz      .aw_bad
+        mov     [rel wlen], rbx
         WRITE   againp, 15
         lea     r12, [rel word2]
         mov     r13, 63
@@ -251,10 +259,27 @@ ask_words:
         call    read_line
         test    rbx, rbx
         jz      .aw_bad
+        cmp     rbx, [rel wlen]
+        jne     .aw_miss
+        mov     rcx, rbx
+        lea     rsi, [rel wordbuf]
+        lea     rdi, [rel word2]
+        cld
+        repe    cmpsb
+        jne     .aw_miss
         xor     eax, eax
+        ret
+.aw_miss:
+        WRITE   stranger, stranger_len
+        mov     eax, 1
         ret
 .aw_bad:
         mov     eax, 1
+        ret
+
+tell_enlisted:
+        WRITE   cut, cut_len
+        WRITE   sleepw, sleepw_len
         ret
 
 ask_one_word:
@@ -350,6 +375,16 @@ wordp:  db      "speak the word", 10
 againp: db      "speak it again", 10
 newk:   db      "n  a new keeper", 10
 dism:   db      "d  dismiss", 10
+cut:    db      "the name is cut", 10
+cut_len equ     $ - cut
+sleepw: db      "the word sleeps in the twin", 10
+sleepw_len equ  $ - sleepw
+knows:  db      "this fire knows you", 10
+knows_len equ   $ - knows
+given:  db      "that name is given back", 10
+given_len equ   $ - given
+stranger: db    "the second word is a stranger", 10
+stranger_len equ $ - stranger
 pad:    db      "  "
 spc:    db      " "
 nl:     db      10
@@ -357,6 +392,7 @@ star:   db      "*"
 digit:  db      "1"
 handname: db    "hand", 0
 key:    db      0
+wlen:   dq      0
 namebuf: times 32 db 0
 wordbuf: times 64 db 0
 word2:  times 64 db 0

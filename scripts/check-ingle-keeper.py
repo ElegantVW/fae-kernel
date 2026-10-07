@@ -3,9 +3,9 @@
 
 Cairn has ingle, keeper, wax hand, and wax hands/twin (716 bytes). QEMU
 CPU is qemu64,+aes,+rdrand. First boot: name gil (gix, backspace, l),
-word tinder twice. Keys echo; the word is stars. Enter lights the fire,
-q leaves. Boot2 is the hall: 1 gil, the word, fire. The word never
-appears on serial.
+a stranger confirm, then word tinder twice. Hall answers. Enter lights
+the fire, q leaves. Boot2 is the hall: 1 gil, the word, this fire knows
+you. The word never appears on serial.
 """
 from __future__ import annotations
 
@@ -26,6 +26,10 @@ SER = f"/tmp/kindling-ingle-keeper-{os.getpid()}.ser"
 NAME = "gil"
 WORD = "tinder"
 CPU = "qemu64,+aes,+rdrand"
+CUT = "the name is cut"
+SLEEP = "the word sleeps in the twin"
+KNOWS = "this fire knows you"
+STRANGER = "the second word is a stranger"
 
 
 def read_until(sock: socket.socket, mark: str, timeout: float) -> str:
@@ -188,10 +192,27 @@ def main() -> int:
             return fail("the word leaked on serial", t)
         if "*" not in after_word:
             return fail("word did not echo as stars", t)
+        send_keys(sock, "nope\n")
+        serial = serial_has(STRANGER, 4)
+        t = serial.replace("\r", "")
+        if STRANGER not in t:
+            return fail("mismatch did not name the stranger", t)
+        serial = serial_has("speak the word", 4)
         send_keys(sock, f"{WORD}\n")
         serial = serial_has("speak it again", 4)
         t = serial.replace("\r", "")
-        again = t.find("speak it again")
+        if "speak it again" not in t:
+            return fail("no confirm after stranger", t)
+        send_keys(sock, f"{WORD}\n")
+        serial = serial_has(CUT, 4)
+        t = serial.replace("\r", "")
+        if CUT not in t:
+            return fail("enlist did not cut the name", t)
+        serial = serial_has(SLEEP, 4)
+        t = serial.replace("\r", "")
+        if SLEEP not in t:
+            return fail("enlist did not smoor the word in the twin", t)
+        again = t.find(SLEEP)
         end = time.time() + 4
         greeted = False
         while time.time() < end:
@@ -236,13 +257,16 @@ def main() -> int:
         if "speak the word" not in t:
             return fail("no word prompt on choose", t)
         send_keys(sock, f"{WORD}\n")
+        serial = serial_has(KNOWS, 4)
+        t = serial.replace("\r", "")
+        if KNOWS not in t:
+            return fail("choose did not answer", t)
         end = time.time() + 4
         greeted = False
         while time.time() < end:
             t = Path(SER).read_bytes().decode(errors="replace").replace("\r", "")
             if t.count(NAME) >= 1 and "the book is split" not in t:
-                # wait for ingle to greet after choose
-                mark = t.rfind("speak the word")
+                mark = t.rfind(KNOWS)
                 if mark >= 0 and NAME in t[mark:]:
                     greeted = True
                     break

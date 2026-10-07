@@ -3,9 +3,10 @@
 
 Happy BOOTX64. Cairn has only ingle. FAT32 at LBA 2048 is KINDLING
 `85C7-AA81` with wax LFN `hand` (32), `hands`/`twin` (716), LFN `keeper`.
-First boot creates gil with word tinder. Boot2 is the hall: n oak, choose 2.
-A flipped twin byte prints `the book is split`. Ciphertexts differ.
-Does not touch the live Databar.
+First boot creates gil with word tinder. Hall answers: the name is cut,
+the word sleeps in the twin. Boot2 is the hall: n oak, choose 2 (this
+fire knows you). Dismiss gives the name back. A flipped twin byte prints
+`the book is split`. Ciphertexts differ. Does not touch the live Databar.
 """
 from __future__ import annotations
 
@@ -44,6 +45,10 @@ OVMF_VARS = [
 NAME = "gil"
 NAME2 = "oak"
 WORD = "tinder"
+CUT = "the name is cut"
+SLEEP = "the word sleeps in the twin"
+KNOWS = "this fire knows you"
+GIVEN = "that name is given back"
 HAND_LEN = 32
 SEAL_LEN = 716
 KINDLING_VOL = 0x85C7AA81
@@ -432,8 +437,16 @@ def main() -> int:
         if "*" not in after_word:
             return fail("word did not echo as stars", serial)
         send_keys(sock, f"{WORD}\n")
-        t = wait_greet("speak it again", NAME, 8)
-        tail = crush(t[t.rfind("speak it again") :]) if "speak it again" in t else t
+        serial = serial_has(CUT, 8)
+        t = serial.replace("\r", "")
+        if CUT not in t:
+            return fail("enlist did not cut the name", t)
+        serial = serial_has(SLEEP, 8)
+        t = serial.replace("\r", "")
+        if SLEEP not in t:
+            return fail("enlist did not lay the word in the twin", t)
+        t = wait_greet(SLEEP, NAME, 8)
+        tail = crush(t[t.rfind(SLEEP) :]) if SLEEP in t else t
         if f"\n{NAME}\n" not in tail and not tail.endswith(f"{NAME}\n") and not tail.endswith(f"\n{NAME}"):
             return fail("ingle did not greet after enlist", t)
         err = enter_and_leave(sock)
@@ -484,6 +497,10 @@ def main() -> int:
         send_keys(sock, f"{WORD}\n")
         serial = serial_has("speak it again", 8)
         send_keys(sock, f"{WORD}\n")
+        serial = serial_has(CUT, 8)
+        t = serial.replace("\r", "")
+        if CUT not in t:
+            return fail("new keeper did not cut the name", t)
         serial = serial_has("2 oak", 8)
         t = serial.replace("\r", "")
         if "2 oak" not in t:
@@ -491,8 +508,12 @@ def main() -> int:
         send_keys(sock, "2")
         serial = serial_has("speak the word", 8)
         send_keys(sock, f"{WORD}\n")
-        t = wait_greet("speak the word", NAME2, 8)
-        tail = crush(t[t.rfind("speak the word") :]) if "speak the word" in t else t
+        serial = serial_has(KNOWS, 8)
+        t = serial.replace("\r", "")
+        if KNOWS not in t:
+            return fail("choose did not answer", t)
+        t = wait_greet(KNOWS, NAME2, 8)
+        tail = crush(t[t.rfind(KNOWS) :]) if KNOWS in t else t
         if f"\n{NAME2}\n" not in tail and not tail.endswith(f"{NAME2}\n") and not tail.endswith(f"\n{NAME2}"):
             return fail("choose 2 did not greet oak", t)
         err = enter_and_leave(sock)
@@ -520,6 +541,10 @@ def main() -> int:
         send_keys(sock, "1\n")
         serial = serial_has("speak the word", 8)
         send_keys(sock, f"{WORD}\n")
+        serial = serial_has(GIVEN, 8)
+        t = serial.replace("\r", "")
+        if GIVEN not in t:
+            return fail("dismiss did not give the name back", t)
         serial = serial_has("who keeps this fire", 8)
         t = serial.replace("\r", "")
         if "the last hand stays" in t:
@@ -536,8 +561,9 @@ def main() -> int:
         send_keys(sock, "1")
         serial = serial_has("speak the word", 8)
         send_keys(sock, f"{WORD}\n")
-        t = wait_greet("speak the word", NAME2, 8)
-        tail = crush(t[t.rfind("speak the word") :]) if "speak the word" in t else t
+        serial = serial_has(KNOWS, 8)
+        t = wait_greet(KNOWS, NAME2, 8)
+        tail = crush(t[t.rfind(KNOWS) :]) if KNOWS in t else t
         if f"\n{NAME2}\n" not in tail and not tail.endswith(f"{NAME2}\n") and not tail.endswith(f"\n{NAME2}"):
             return fail("remaining keeper did not greet", t)
         err = enter_and_leave(sock)
