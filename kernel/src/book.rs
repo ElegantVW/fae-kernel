@@ -2,7 +2,7 @@
 //!
 //! Leaves `hands` and `twin` are the same plaintext roster, wrapped under
 //! different keys. Ciphertexts must not compare equal. A split book refuses
-//! the hall.
+//! the hall. A lone leaf, or wax on either side, is an empty book.
 
 use crate::start::serial_print;
 
@@ -281,6 +281,19 @@ fn seal_one(book: &Book, key: &[u8; 32], out: &mut [u8; SEAL_LEN]) -> bool {
     true
 }
 
+/// `None` is a disk error. `Some(0)` is missing or a zero-length leaf.
+fn glean_side(g: Result<u64, u64>) -> Option<u64> {
+    match g {
+        Ok(n) => Some(n),
+        Err(e) if e == ENOENT => Some(0),
+        Err(_) => None,
+    }
+}
+
+fn side_wax(n: u64, buf: &[u8]) -> bool {
+    n == 0 || (n == SEAL_LEN as u64 && all_zero(buf))
+}
+
 fn load() -> Result<Load, u64> {
     if !crate::cpu::has_aes_ni() || !crate::cpu::has_rdrand() {
         return Err(shut());
@@ -289,23 +302,20 @@ fn load() -> Result<Load, u64> {
     let twin = unsafe { &mut *core::ptr::addr_of_mut!(TWIN_SEAL) };
     zero_bytes(hands);
     zero_bytes(twin);
-    let gh = glean_leaf(&HANDS_NAME, hands);
-    let gt = glean_leaf(&TWIN_NAME, twin);
-    match (gh, gt) {
-        (Err(e), Err(f)) if e == ENOENT && f == ENOENT => return Ok(Load::Empty),
-        (Err(_), _) | (_, Err(_)) => return Err(split()),
-        (Ok(a), Ok(b)) => {
-            if a != SEAL_LEN as u64 || b != SEAL_LEN as u64 {
-                return Err(split());
-            }
+    let gh = glean_side(glean_leaf(&HANDS_NAME, hands));
+    let gt = glean_side(glean_leaf(&TWIN_NAME, twin));
+    let (Some(a), Some(b)) = (gh, gt) else {
+        return Err(split());
+    };
+    // A lone leaf cannot unseal. Treat it as wax so enlist can lay the pair
+    // again. Split is two live seals that disagree.
+    if side_wax(a, hands) || side_wax(b, twin) {
+        if (a != 0 && a != SEAL_LEN as u64) || (b != 0 && b != SEAL_LEN as u64) {
+            return Err(split());
         }
-    }
-    let hz = all_zero(hands);
-    let tz = all_zero(twin);
-    if hz && tz {
         return Ok(Load::Empty);
     }
-    if hz || tz {
+    if a != SEAL_LEN as u64 || b != SEAL_LEN as u64 {
         return Err(split());
     }
     let vol = crate::usb::volume_id();
@@ -351,19 +361,36 @@ fn save(book: &Book) -> Result<(), u64> {
         Ok(n) if n == SEAL_LEN as u64 => {}
         Ok(_) => {
             speak("the ink will not hold\n");
+            wax_pair();
             return Err(err(EIO));
         }
-        Err(e) => return ink_miss(e),
+        Err(e) => {
+            wax_pair();
+            return ink_miss(e);
+        }
     }
     match stow_leaf(&TWIN_NAME, twin) {
-        Ok(n) if n == SEAL_LEN as u64 => {}
+        Ok(n) if n == SEAL_LEN as u64 => Ok(()),
         Ok(_) => {
             speak("the ink will not hold\n");
-            return Err(err(EIO));
+            wax_pair();
+            Err(err(EIO))
         }
-        Err(e) => return ink_miss(e),
+        Err(e) => {
+            wax_pair();
+            ink_miss(e)
+        }
     }
-    Ok(())
+}
+
+/// Best-effort: both leaves wax so a miss cannot split the next roll.
+fn wax_pair() {
+    let hands = unsafe { &mut *core::ptr::addr_of_mut!(HANDS_SEAL) };
+    let twin = unsafe { &mut *core::ptr::addr_of_mut!(TWIN_SEAL) };
+    zero_bytes(hands);
+    zero_bytes(twin);
+    let _ = stow_leaf(&HANDS_NAME, hands);
+    let _ = stow_leaf(&TWIN_NAME, twin);
 }
 
 fn live_count(book: &Book) -> usize {

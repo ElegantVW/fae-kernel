@@ -145,7 +145,7 @@ is the design working.
 - **keeper** — G37 Setup Assistant, G40 hall. Empty book: name, word, word again, `enlist`. Later: list keepers; digit `choose`s, `n` enlists, `d` dismisses. Printable name keys echo; the word echoes as stars; backspace edits (G38). The hall answers (G41): `the name is cut`, `the word sleeps in the twin`, `this fire knows you`, `that name is given back`; a confirm miss is `the second word is a stranger`.
 - **hand** — G37/G39 chosen name. Measure 32. Wax is 32 zeros. `enlist`/`choose` ink it. `ingle` greets it after a successful last word 0.
 - **hands** — G39 book. Exact measure 716. AES-256-GCM under `SHA-256("kindling-hands"\|\|vol_id)`. Roster of 8 slots. Not a spark. FAT root on EFI / KINDLING; cairn on the BIOS hearth.
-- **twin** — G39 snapshot of the same plaintext book, different wrapping key. Byte-compare after unseal. Mismatch is `the book is split`.
+- **twin** — G39 snapshot of the same plaintext book, different wrapping key. Byte-compare after unseal. Two live seals that disagree is `the book is split`. A lone leaf (one side missing or wax) is an empty book, so a miss that only inks `hands` can enlist again.
 - **roll / enlist / choose / dismiss** — house calls 11–14. The kernel owns the keys. Sparks never see wrapping keys or verifiers.
 - **LEAF** — G32/G33 proof leaf. Page `the volume speaks`. Cairn on the paved / BIOS leaf image; FAT root on QEMU efi-msc / efi-leaf / the Databar.
 - **slate** — G19/G36 proof leaf. Ten bytes, wax `wax waits` then ink `ink holds`. Cairn on the BIOS tale image; FAT root (LFN `slate`) on QEMU efi-stow. Volume serial KINDLING `85C7-AA81`.

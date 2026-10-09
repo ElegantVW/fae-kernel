@@ -1900,18 +1900,8 @@ fn write_chain(h: &mut Host, mut clus: u32, size: u32, buf: u64) -> u64 {
                 w8(h.data + MSC_VERIFY + k, r8(h.data + MSC_DATA + k));
                 k += 1;
             }
-            if !msc_write10(h, lba, h.data + MSC_DATA, 1, 512) {
+            if !commit_prepared(h, lba) {
                 return err(EIO);
-            }
-            if !msc_read10(h, lba, h.data + MSC_DATA, 1, 512) {
-                return err(EIO);
-            }
-            k = 0;
-            while k < 512 {
-                if r8(h.data + MSC_DATA + k) != r8(h.data + MSC_VERIFY + k) {
-                    return err(EIO);
-                }
-                k += 1;
             }
             copied += take;
             secs = secs.saturating_add(1);
@@ -1936,19 +1926,8 @@ fn speak_fat(s: &'static str) {
 
 const FAT_EOC: u32 = 0x0FFF_FFFF;
 
-fn commit_sec(h: &mut Host, lba: u32) -> bool {
+fn sector_match(h: &Host) -> bool {
     let mut k = 0u64;
-    while k < 512 {
-        w8(h.data + MSC_VERIFY + k, r8(h.data + MSC_DATA + k));
-        k += 1;
-    }
-    if !msc_write10(h, lba, h.data + MSC_DATA, 1, 512) {
-        return false;
-    }
-    if !msc_read10(h, lba, h.data + MSC_DATA, 1, 512) {
-        return false;
-    }
-    k = 0;
     while k < 512 {
         if r8(h.data + MSC_DATA + k) != r8(h.data + MSC_VERIFY + k) {
             return false;
@@ -1956,6 +1935,42 @@ fn commit_sec(h: &mut Host, lba: u32) -> bool {
         k += 1;
     }
     true
+}
+
+fn restore_verify(h: &mut Host) {
+    let mut k = 0u64;
+    while k < 512 {
+        w8(h.data + MSC_DATA + k, r8(h.data + MSC_VERIFY + k));
+        k += 1;
+    }
+}
+
+/// WRITE(10) the sector already copied into MSC_VERIFY; READ(10) compare.
+/// Three tries. TUR + settle between misses — iron flash can lag the cache.
+fn commit_prepared(h: &mut Host, lba: u32) -> bool {
+    let mut tries = 0u8;
+    while tries < 3 {
+        restore_verify(h);
+        if msc_write10(h, lba, h.data + MSC_DATA, 1, 512)
+            && msc_read10(h, lba, h.data + MSC_DATA, 1, 512)
+            && sector_match(h)
+        {
+            return true;
+        }
+        let _ = msc_ready(h);
+        recover();
+        tries = tries.saturating_add(1);
+    }
+    false
+}
+
+fn commit_sec(h: &mut Host, lba: u32) -> bool {
+    let mut k = 0u64;
+    while k < 512 {
+        w8(h.data + MSC_VERIFY + k, r8(h.data + MSC_DATA + k));
+        k += 1;
+    }
+    commit_prepared(h, lba)
 }
 
 fn max_clus(vol: &FatVol) -> u32 {
@@ -2497,6 +2512,7 @@ fn patch_dirent(h: &mut Host, hit: &FatHit, clus: u32, size: u32) -> bool {
 }
 
 fn create_file(h: &mut Host, name: &[u8], len: u64) -> Result<u32, u64> {
+    recover();
     if h.vol.fat16 {
         return Err(EPERM);
     }
@@ -2568,6 +2584,7 @@ pub fn stow_fat(name: &[u8], buf: u64, len: u64) -> u64 {
                 free_chain(h, clus);
                 return err(EIO);
             }
+            recover();
             finish_write(h, clus, len, buf)
         }
         Ok(hit) if hit.size as u64 != len => {
@@ -2576,7 +2593,10 @@ pub fn stow_fat(name: &[u8], buf: u64, len: u64) -> u64 {
         }
         Ok(hit) => finish_write(h, hit.clus, len, buf),
         Err(e) if e == ENOENT && !h.vol.fat16 => match create_file(h, name, len) {
-            Ok(clus) => finish_write(h, clus, len, buf),
+            Ok(clus) => {
+                recover();
+                finish_write(h, clus, len, buf)
+            }
             Err(e) => err(e),
         },
         Err(e) => err(e),

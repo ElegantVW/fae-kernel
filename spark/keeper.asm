@@ -89,7 +89,7 @@ start:
         je      die
         cmp     rax, -22                ; -EINVAL confirm
         je      .askword_first
-        jmp     .cycle                  ; ink miss; split dies on the next roll
+        jmp     .cycle                  ; ink miss; a lone leaf is wax; split dies on roll
 
 .hall:
         WRITE   ask, 20

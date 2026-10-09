@@ -2,12 +2,13 @@
 """EFI keeper: the book. Create, hall, choose, split.
 
 Happy BOOTX64. Cairn has only ingle. FAT32 at LBA 2048 is KINDLING
-`85C7-AA81` with LFN `keeper` and no wax book leaves. First boot creates
-`hands`/`twin`/`hand` (716/716/32) and gil with word tinder. Hall answers:
-the name is cut, the word sleeps in the twin. Boot2 is the hall: n oak,
-choose 2 (this fire knows you). Dismiss gives the name back. A flipped
-twin byte prints `the book is split`. A second stick with wax 716/32 still
-enlists. Ciphertexts differ. Does not touch the live Databar.
+`85C7-AA81` with LFN `keeper`, an `EFI` directory, `LEAF`, wax `hand`,
+and no `hands`/`twin`. First boot creates those two (716/716) and inks
+`hand`. Hall answers: the name is cut, the word sleeps in the twin. Boot2
+is the hall: n oak, choose 2 (this fire knows you). Dismiss gives the name
+back. A flipped twin byte prints `the book is split`. A lone wax `hands`
+(no twin) still enlists. A second stick with wax 716/32 still enlists.
+Ciphertexts differ. Does not touch the live Databar.
 """
 from __future__ import annotations
 
@@ -77,6 +78,16 @@ def make_83(name: str) -> bytes:
     return (base.ljust(8) + "   ").encode("ascii")
 
 
+def dirent83(name11: bytes, attr: int, first: int, size: int = 0) -> bytes:
+    ent = bytearray(32)
+    ent[0:11] = name11
+    ent[11] = attr
+    ent[26:28] = (first & 0xFFFF).to_bytes(2, "little")
+    ent[20:22] = (first >> 16).to_bytes(2, "little")
+    ent[28:32] = size.to_bytes(4, "little")
+    return bytes(ent)
+
+
 def lfn_entry(long_name: str, name11: bytes) -> bytes:
     chars = [ord(c) for c in long_name] + [0]
     while len(chars) < 13:
@@ -100,7 +111,13 @@ def lfn_entry(long_name: str, name11: bytes) -> bytes:
     return bytes(ent)
 
 
-def plant_fat32(img: bytearray, files: list[tuple[str, bytes]], part_lba: int = PART_LBA, part_secs: int = 2048) -> None:
+def plant_fat32(
+    img: bytearray,
+    files: list[tuple[str, bytes]],
+    part_lba: int = PART_LBA,
+    part_secs: int = 2048,
+    with_efi: bool = False,
+) -> None:
     fat = part_lba * 512
     img[fat : fat + 3] = b"\xeb\x58\x90"
     img[fat + 3 : fat + 11] = b"MSDOS5.0"
@@ -152,6 +169,16 @@ def plant_fat32(img: bytearray, files: list[tuple[str, bytes]], part_lba: int = 
         ent[20:22] = (first >> 16).to_bytes(2, "little")
         ent[28:32] = len(blob).to_bytes(4, "little")
         entries += bytes(ent)
+    if with_efi:
+        efi_clus = clus
+        fatmap[efi_clus] = 0x0FFFFFFF
+        body = dirent83(b".          ", 0x10, efi_clus) + dirent83(b"..         ", 0x10, 2)
+        start = data + (efi_clus - 2) * 512
+        img[start : start + len(body)] = body
+        entries += dirent83(make_83("EFI"), 0x10, efi_clus)
+        clus += 1
+    if len(entries) > 512:
+        raise SystemExit("FAIL efi-keeper (root cluster overflow)")
     img[data : data + len(entries)] = entries
     for c, val in fatmap.items():
         off = fat1 + c * 4
@@ -160,14 +187,18 @@ def plant_fat32(img: bytearray, files: list[tuple[str, bytes]], part_lba: int = 
     img[fat2 : fat2 + 16 * 512] = img[fat1 : fat1 + 16 * 512]
 
 
-def write_stick(spark: bytes, wax_book: bool) -> None:
+def write_stick(spark: bytes, wax_book: bool, lone_hands: bool = False) -> None:
     img = bytearray(2 * 1024 * 1024)
     img[510] = 0x55
     img[511] = 0xAA
     img[446 + 4] = 0x0C
     img[446 + 8 : 446 + 12] = PART_LBA.to_bytes(4, "little")
     img[446 + 12 : 446 + 16] = (2048).to_bytes(4, "little")
-    files: list[tuple[str, bytes]] = [("keeper", spark)]
+    files: list[tuple[str, bytes]] = [
+        ("keeper", spark),
+        ("LEAF", b"the volume speaks\n"),
+        ("hand", bytes(HAND_LEN)),
+    ]
     if wax_book:
         files = [
             ("hand", bytes(HAND_LEN)),
@@ -175,7 +206,14 @@ def write_stick(spark: bytes, wax_book: bool) -> None:
             ("hands", bytes(SEAL_LEN)),
             ("twin", bytes(SEAL_LEN)),
         ]
-    plant_fat32(img, files)
+    elif lone_hands:
+        files = [
+            ("keeper", spark),
+            ("LEAF", b"the volume speaks\n"),
+            ("hand", bytes(HAND_LEN)),
+            ("hands", bytes(SEAL_LEN)),
+        ]
+    plant_fat32(img, files, with_efi=not wax_book)
     fat = PART_LBA * 512
     if int.from_bytes(img[fat + 67 : fat + 71], "little") != KINDLING_VOL:
         raise SystemExit("FAIL efi-keeper (planted volume serial is not KINDLING)")
@@ -231,7 +269,7 @@ def walk_root(img: bytes, part_lba: int = PART_LBA) -> dict[str, tuple[int, int]
                         chars.append(ent[start + 2 * i] | (ent[start + 2 * i + 1] << 8))
                 lfn_map[seq] = chars
                 continue
-            if attr & 0x18:
+            if attr & 0x08 and not (attr & 0x10):
                 lfn_map.clear()
                 continue
             name = ""
@@ -442,6 +480,47 @@ def wait_greet(after: str, name: str, timeout: float) -> str:
     return text
 
 
+def proof_lone(code: Path, spark: bytes) -> int:
+    """Iron miss: `hands` landed, `twin` did not. A lone leaf is wax."""
+    write_stick(spark, wax_book=False, lone_hands=True)
+    planted = walk_root(Path(IMG).read_bytes())
+    if "hands" not in planted or "twin" in planted:
+        return fail("lone: plant did not leave a one-sided book")
+    proc = boot_once(code)
+    sock = None
+    try:
+        serial = serial_has("who keeps this fire", 25)
+        t = serial.replace("\r", "")
+        if "who keeps this fire" not in t:
+            return fail("lone: no keeper prompt", serial)
+        if "the book is split" in t:
+            return fail("lone: one-sided book split the hall", serial)
+        sock = monitor()
+        if sock is None:
+            return fail("lone: no monitor")
+        send_keys(sock, f"{NAME}\n")
+        serial = serial_has("speak the word", 8)
+        send_keys(sock, f"{WORD}\n")
+        serial = serial_has("speak it again", 8)
+        send_keys(sock, f"{WORD}\n")
+        serial = serial_has(CUT, 8)
+        t = serial.replace("\r", "")
+        if CUT not in t:
+            return fail("lone: enlist did not cut the name", t)
+        serial = serial_has(SLEEP, 8)
+        t = serial.replace("\r", "")
+        if SLEEP not in t:
+            return fail("lone: enlist did not lay the word in the twin", t)
+    finally:
+        if sock is not None:
+            sock.close()
+        stop(proc)
+    miss = remember_book(Path(IMG).read_bytes())
+    if miss:
+        return fail("lone: " + miss)
+    return 0
+
+
 def proof_wax(code: Path, spark: bytes) -> int:
     write_stick(spark, wax_book=True)
     proc = boot_once(code)
@@ -548,8 +627,11 @@ def main() -> int:
     shutil.copyfile(cairn_blob, CAIRN)
     write_stick(spark, wax_book=False)
     planted = walk_root(Path(IMG).read_bytes())
-    if "hands" in planted or "twin" in planted or "hand" in planted:
+    if "hands" in planted or "twin" in planted:
         print("FAIL efi-keeper (wax book files present on create proof)", file=sys.stderr)
+        return 1
+    if "EFI" not in planted or "LEAF" not in planted or "hand" not in planted:
+        print("FAIL efi-keeper (Databar-like root missing EFI/LEAF/hand)", file=sys.stderr)
         return 1
     shutil.copyfile(vars_src, VARS)
 
@@ -735,6 +817,9 @@ def main() -> int:
             sock.close()
         stop(proc)
 
+    lone = proof_lone(code, spark)
+    if lone != 0:
+        return lone
     wax = proof_wax(code, spark)
     if wax != 0:
         return wax
