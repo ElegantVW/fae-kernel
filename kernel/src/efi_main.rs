@@ -8,7 +8,6 @@ mod ata;
 mod book;
 mod cairn;
 mod cpu;
-mod sha256;
 mod gdt;
 mod glass;
 mod house;
@@ -16,23 +15,25 @@ mod idt;
 mod kbd;
 mod mm;
 mod pci;
-mod usb;
+mod sha256;
 mod start;
+mod store;
 mod timer;
+mod usb;
 
 use core::fmt::Write;
 use mm::Hint;
-use start::{serial_print, start, Serial};
+use start::{Serial, serial_print, start};
 use uefi::boot::{AllocateType, MemoryType, SearchType};
 use uefi::cstr16;
 use uefi::mem::memory_map::MemoryMap;
 use uefi::prelude::*;
+use uefi::proto::ProtocolPointer;
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 use uefi::proto::device_path::{DevicePath, LoadedImageDevicePath};
 use uefi::proto::loaded_image::LoadedImage;
 use uefi::proto::media::file::{File, FileAttribute, FileMode, RegularFile};
 use uefi::proto::media::fs::SimpleFileSystem;
-use uefi::proto::ProtocolPointer;
 
 #[used]
 static CLOTHES: &[u8] = b"not their OS; our clothes\0";
@@ -218,7 +219,10 @@ fn load_from_fs(mut fs: uefi::boot::ScopedProtocol<SimpleFileSystem>) -> Option<
         core::ptr::write_bytes(dest_ptr.add(off as usize), 0, (padded - off) as usize);
     }
     conout("cairn\r\n");
-    Some(CairnBuf { src: dest, len: padded })
+    Some(CairnBuf {
+        src: dest,
+        len: padded,
+    })
 }
 
 /// Copy `\EFI\BOOT\CAIRN` while boot services still live. `offer` plants

@@ -6,7 +6,6 @@ mod ata;
 mod book;
 mod cairn;
 mod cpu;
-mod sha256;
 mod gdt;
 mod glass;
 mod house;
@@ -14,9 +13,11 @@ mod idt;
 mod kbd;
 mod mm;
 mod pci;
-mod usb;
+mod sha256;
 mod start;
+mod store;
 mod timer;
+mod usb;
 
 use core::fmt::Write;
 

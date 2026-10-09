@@ -1,4 +1,5 @@
 //! xHCI + HID boot keyboard + MSC (BOT). Event ring is polled.
+//! Partition walk lives in `store`; FAT is one arm of that map.
 
 use core::cell::UnsafeCell;
 use core::sync::atomic::{Ordering, compiler_fence, fence};
@@ -77,9 +78,9 @@ struct Evt {
     c: u32,
 }
 
-/// Saved BPB + partition LBA after `probe_fat`. FAT is the medium; house
-/// names stay Gleam. `vol_ok` is independent of `fat` (`looks_fat` still
-/// lights the glass even when the BPB is too odd to walk).
+/// Saved BPB + partition LBA after `store` names a FAT arm. House names
+/// stay Gleam. `vol_ok` is independent of `fat` (`looks_fat` still lights
+/// the glass even when the BPB is too odd to walk).
 #[derive(Clone, Copy)]
 struct FatVol {
     lba: u32,
@@ -131,6 +132,9 @@ struct Host {
     vol: FatVol,
     /// Next FAT32 cluster to try when allocating. Wraps at `max_clus`.
     alloc_rover: u32,
+    /// READ CAPACITY block length and last-LBA+1. `store` paints these.
+    blk: u32,
+    n_lba: u32,
 }
 
 struct HostCell(UnsafeCell<Option<Host>>);
@@ -1089,71 +1093,9 @@ fn w32le(a: u64, v: u32) {
     w8(a + 3, (v >> 24) as u8);
 }
 
-fn looks_fat(p: u64) -> bool {
-    if r8(p + 510) != 0x55 || r8(p + 511) != 0xAA {
-        return false;
-    }
-    let fat32 = r8(p + 82) == b'F'
-        && r8(p + 83) == b'A'
-        && r8(p + 84) == b'T'
-        && r8(p + 85) == b'3'
-        && r8(p + 86) == b'2';
-    let fat16 = r8(p + 54) == b'F' && r8(p + 55) == b'A' && r8(p + 56) == b'T';
-    fat32 || fat16
-}
-
-fn fat_part_type(ty: u8) -> bool {
-    matches!(ty, 0x01 | 0x04 | 0x06 | 0x0B | 0x0C | 0x0E | 0xEF)
-}
-
-fn lba32_at(a: u64) -> Option<u32> {
-    let lo = r32le(a);
-    let hi = r32le(a + 4);
-    if hi != 0 || lo == 0 { None } else { Some(lo) }
-}
-
-/// MSC sees the whole disk. LBA 0 is often an MBR; FAT lives in a partition
-/// (Databar KINDLING starts at 2048). Superfloppy LBA 0 still counts.
-fn probe_fat(h: &mut Host) -> bool {
-    let buf = h.data + MSC_DATA;
-    if !msc_read10(h, 0, buf, 1, 512) {
-        return false;
-    }
-    if take_fat(h, 0, buf) {
-        return true;
-    }
-    if r8(buf + 510) != 0x55 || r8(buf + 511) != 0xAA {
-        return false;
-    }
-    let mut starts = [0u32; 4];
-    let mut n = 0u32;
-    let mut gpt = false;
-    let mut i = 0u32;
-    while i < 4 {
-        let e = buf + 446 + i as u64 * 16;
-        let ty = r8(e + 4);
-        let start = r32le(e + 8);
-        if ty == 0xEE {
-            gpt = true;
-        } else if fat_part_type(ty) && start != 0 && (n as usize) < starts.len() {
-            starts[n as usize] = start;
-            n = n.saturating_add(1);
-        }
-        i = i.saturating_add(1);
-    }
-    let mut k = 0u32;
-    while k < n {
-        if msc_read10(h, starts[k as usize], buf, 1, 512) && take_fat(h, starts[k as usize], buf) {
-            return true;
-        }
-        k = k.saturating_add(1);
-    }
-    gpt && probe_gpt(h, buf)
-}
-
 /// `looks_fat` lights the glass. Parse the BPB when we can so `glean` may walk.
 fn take_fat(h: &mut Host, lba: u32, buf: u64) -> bool {
-    if !looks_fat(buf) {
+    if !crate::store::looks_fat(buf) {
         return false;
     }
     match parse_vol(lba, buf) {
@@ -1241,55 +1183,45 @@ fn parse_vol(lba: u32, p: u64) -> Option<FatVol> {
     }
 }
 
-fn probe_gpt(h: &mut Host, buf: u64) -> bool {
-    if !msc_read10(h, 1, buf, 1, 512) {
+/// One 512-byte READ(10) into the MSC data page. `store` walks with this.
+pub(crate) fn read_sec(lba: u32) -> Option<u64> {
+    let h = host_mut().as_mut()?;
+    if h.msc_slot == 0 || h.blk != 512 {
+        return None;
+    }
+    let buf = h.data + MSC_DATA;
+    if msc_read10(h, lba, buf, 1, 512) {
+        Some(buf)
+    } else {
+        None
+    }
+}
+
+pub(crate) fn disk_geom() -> Option<(u32, u32)> {
+    let h = host_mut().as_ref()?;
+    if h.msc_slot == 0 || h.blk == 0 {
+        return None;
+    }
+    Some((h.blk, h.n_lba))
+}
+
+fn claim_first_fat() -> bool {
+    let Some(lba) = crate::store::first_fat() else {
+        return false;
+    };
+    let Some(h) = host_mut().as_mut() else {
+        return false;
+    };
+    let buf = h.data + MSC_DATA;
+    if !msc_read10(h, lba, buf, 1, 512) {
         return false;
     }
-    if r8(buf) != b'E'
-        || r8(buf + 1) != b'F'
-        || r8(buf + 2) != b'I'
-        || r8(buf + 3) != b' '
-        || r8(buf + 4) != b'P'
-        || r8(buf + 5) != b'A'
-        || r8(buf + 6) != b'R'
-        || r8(buf + 7) != b'T'
-    {
-        return false;
+    if take_fat(h, lba, buf) {
+        h.fat = true;
+        true
+    } else {
+        false
     }
-    let part_lba = lba32_at(buf + 72).unwrap_or(2);
-    let nent = r32le(buf + 80).min(32);
-    let esz = r32le(buf + 84);
-    if esz != 128 || part_lba == 0 {
-        return false;
-    }
-    let per = 512 / 128;
-    let mut starts = [0u32; 16];
-    let mut n = 0u32;
-    let mut idx = 0u32;
-    while idx < nent && (n as usize) < starts.len() {
-        if idx % per == 0 {
-            let sec = part_lba.saturating_add(idx / per);
-            if !msc_read10(h, sec, buf, 1, 512) {
-                break;
-            }
-        }
-        let e = buf + (idx % per) as u64 * 128;
-        if r32le(e) != 0 {
-            if let Some(s) = lba32_at(e + 32) {
-                starts[n as usize] = s;
-                n = n.saturating_add(1);
-            }
-        }
-        idx = idx.saturating_add(1);
-    }
-    let mut k = 0u32;
-    while k < n {
-        if msc_read10(h, starts[k as usize], buf, 1, 512) && take_fat(h, starts[k as usize], buf) {
-            return true;
-        }
-        k = k.saturating_add(1);
-    }
-    false
 }
 
 fn msc_read10(h: &mut Host, lba: u32, buf: u64, blocks: u16, blk: u32) -> bool {
@@ -2655,13 +2587,16 @@ fn try_msc(
         h.msc_slot = 0;
         return false;
     }
+    let last = (r8(h.data + MSC_DATA) as u32) << 24
+        | (r8(h.data + MSC_DATA + 1) as u32) << 16
+        | (r8(h.data + MSC_DATA + 2) as u32) << 8
+        | r8(h.data + MSC_DATA + 3) as u32;
     let blk = (r8(h.data + MSC_DATA + 4) as u32) << 24
         | (r8(h.data + MSC_DATA + 5) as u32) << 16
         | (r8(h.data + MSC_DATA + 6) as u32) << 8
         | r8(h.data + MSC_DATA + 7) as u32;
-    if blk == 512 {
-        h.fat = probe_fat(h);
-    }
+    h.blk = blk;
+    h.n_lba = last.saturating_add(1);
     true
 }
 
@@ -3109,6 +3044,8 @@ fn bringup(bar: u64, len: u64) -> bool {
             tot_sec: 0,
         },
         alloc_rover: 2,
+        blk: 0,
+        n_lba: 0,
     };
     power_ports(&mut h);
     settle(&mut h, 100);
@@ -3124,12 +3061,19 @@ fn bringup(bar: u64, len: u64) -> bool {
     unsafe {
         core::ptr::addr_of_mut!(KBD).write(h.kbd_slot != 0);
         core::ptr::addr_of_mut!(MSC).write(h.msc_slot != 0);
-        core::ptr::addr_of_mut!(FAT).write(h.fat);
+        core::ptr::addr_of_mut!(FAT).write(false);
     }
     if h.kbd_slot != 0 {
         crate::kbd::prefer_usb();
     }
     *host_mut() = Some(h);
+    if unsafe { core::ptr::addr_of!(MSC).read() } {
+        crate::store::probe();
+        let fat = claim_first_fat();
+        unsafe {
+            core::ptr::addr_of_mut!(FAT).write(fat);
+        }
+    }
     true
 }
 
@@ -3184,7 +3128,7 @@ pub fn volume_id() -> u32 {
     }
 }
 
-/// Glass/serial word after `msc`: `fat` when LBA 0 is a FAT boot sector.
+/// Glass/serial word after the store dump: `fat` when a FAT arm was claimed.
 pub fn fat_line() -> &'static str {
     if fat_live() { "fat" } else { "no fat" }
 }

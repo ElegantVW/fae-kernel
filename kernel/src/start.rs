@@ -243,6 +243,7 @@ unsafe extern "C" fn after_cup() -> ! {
             crate::glass::put_bytes(b"\n".as_ptr(), 1);
         }
         if crate::usb::msc_live() {
+            crate::store::paint();
             let line = crate::usb::fat_line();
             serial_print("kindling: ");
             serial_print(line);

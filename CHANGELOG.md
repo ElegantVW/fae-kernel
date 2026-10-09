@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## store-g44 (2026-10-09)
+
+- After `msc` the glass names the disk: table (`mbr` / `gpt` / `disk`), block size, LBA count, then each partition (`fat` / `kindlog` / `empty` / `other`) with type hex and start LBA. FAT stays the glean/stow arm. No writes. KINDLOG magic `KLOG` is recognized, not mounted.
+- efi-msc plants a type `0x83` dummy beside the FAT32; serial `83 4096 other`. The live Databar is not written.
+
 ## lone-g43 (2026-10-09)
 
 - Iron G42 first boot painted `the ink will not hold` then `the book is split` and `gleam exit 1`: `stow` laid `hands` and missed `twin`, and `roll` treated a lone leaf as a split. A missing or wax side is an empty book. `save` waxes both leaves when either stow misses. WRITE(10)+reread tries three times with TUR in between. efi-keeper plants an `EFI` directory + `LEAF` + wax `hand` (Databar-like root) and a one-sided `hands` still enlists. Two live seals that disagree still split.

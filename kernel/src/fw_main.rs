@@ -7,7 +7,6 @@ mod ata;
 mod book;
 mod cairn;
 mod cpu;
-mod sha256;
 mod gdt;
 mod glass;
 mod house;
@@ -15,13 +14,15 @@ mod idt;
 mod kbd;
 mod mm;
 mod pci;
-mod usb;
+mod sha256;
 mod start;
+mod store;
 mod timer;
+mod usb;
 
 use core::fmt::Write;
 use mm::Hint;
-use start::{serial_print, start, Serial};
+use start::{Serial, serial_print, start};
 
 unsafe extern "C" {
     static __kernel_end: u8;

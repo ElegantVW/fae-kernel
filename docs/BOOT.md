@@ -77,9 +77,10 @@ xHCI is taken (USBLEGSUP, halt, reset, run); glass names the step:
 or one hub hop). Miss is `no xhci` (no PCI class `0x0C0330`) or
 `xhci` then `no usb` (HC ran, no keyboard). After `tick`, `msc` when a
 BOT mass-storage device answers READ CAPACITY (every root port and hub
-child is scanned; HID does not stop the walk). After `msc`, `fat` when
-READ(10) finds a FAT boot sector at LBA 0 or in an MBR/GPT partition
-(`no fat` if the read or signature misses). After HCRST the ports
+child is scanned; HID does not stop the walk). After `msc`, `store` paints the table (`mbr` / `gpt` / `disk`), block size,
+LBA count, and a word per partition (`fat` / `kindlog` / `empty` / `other`)
+with type hex and start LBA (`docs/STORE.md`). Then `fat` when a FAT arm
+was claimed (`no fat` if none). After HCRST the ports
 settle on the clock and are scanned twice so a late CCS (the boot stick)
 is seen. Port waits are milliseconds. PED is write-1-to-clear: an ack
 must not write 1 to it or the port disables. EP0 control TDs match

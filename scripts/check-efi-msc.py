@@ -2,11 +2,13 @@
 """Boot EFI Kindling with qemu-xhci + usb-kbd + usb-storage.
 
 Port 1 is the keyboard so a HID-first scan would miss the stick on port 2.
-READ CAPACITY must print `kindling: msc`; READ(10) of the FAT partition
-boot sector prints `kindling: fat`. The image is MBR + a real FAT32 at
-LBA 2048 (like the Databar) with Gleam leaf `LEAF` (the page) and LFN
-`leaf` (the spark). Cairn has only ingle, so spawn gathers from the volume.
-Enter greets; q homes leaf (`the light remains`); q leaves.
+READ CAPACITY must print `kindling: msc`. The store dump names every
+partition (`store mbr`, `0c 2048 fat`, `83 4096 other`). FAT still
+prints `kindling: fat` and gleans `LEAF`. The image is MBR + FAT32 at
+LBA 2048 (like the Databar) plus a dummy type-0x83 slice. Gleam leaf
+`LEAF` (the page) and LFN `leaf` (the spark). Cairn has only ingle, so
+spawn gathers from the volume. Enter greets; q homes leaf
+(`the light remains`); q leaves.
 """
 from __future__ import annotations
 
@@ -232,13 +234,18 @@ def main() -> int:
     )
     ESP.joinpath("EFI/BOOT").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(cairn_blob, CAIRN)
-    img = bytearray(2 * 1024 * 1024)
-    # MBR like the Databar: one FAT32 LBA partition at sector 2048.
+    img = bytearray(4 * 1024 * 1024)
+    # MBR like the Databar: FAT32 at 2048, plus a dummy non-FAT slice the
+    # store must name `other` (G44). No KINDLOG this sitting.
     img[510] = 0x55
     img[511] = 0xAA
     img[446 + 4] = 0x0C
     img[446 + 8 : 446 + 12] = (2048).to_bytes(4, "little")
     img[446 + 12 : 446 + 16] = (2048).to_bytes(4, "little")
+    img[446 + 16 + 4] = 0x83
+    img[446 + 16 + 8 : 446 + 16 + 12] = (4096).to_bytes(4, "little")
+    img[446 + 16 + 12 : 446 + 16 + 16] = (1024).to_bytes(4, "little")
+    img[4096 * 512 : 4096 * 512 + 5] = b"OTHER"
     plant_fat32(img, spark=spark)
     fat = 2048 * 512
     if img[fat + 82 : fat + 87] != b"FAT32" or img[fat + 510] != 0x55:
@@ -310,8 +317,26 @@ def main() -> int:
             except OSError:
                 pass
             return 1
+        if "kindling: store mbr" not in t:
+            serial = serial_has("kindling: store mbr", 8)
+            t = serial.replace("\r", "")
+        if "kindling: store mbr" not in t:
+            print("FAIL efi-msc (no store dump — dispatcher missed the table)")
+            print(serial[-600:])
+            return 1
+        if "kindling: 0c 2048 fat" not in t:
+            print("FAIL efi-msc (FAT partition not named)")
+            print(serial[-600:])
+            return 1
+        if "kindling: 83 4096 other" not in t:
+            print("FAIL efi-msc (dummy partition not named other)")
+            print(serial[-600:])
+            return 1
         if "kindling: fat" not in t:
-            print("FAIL efi-msc (no fat — READ(10) LBA 0 missed the boot sector)")
+            serial = serial_has("kindling: fat", 8)
+            t = serial.replace("\r", "")
+        if "kindling: fat" not in t:
+            print("FAIL efi-msc (no fat — READ(10) missed the FAT boot sector)")
             print(serial[-600:])
             try:
                 errf.flush()
