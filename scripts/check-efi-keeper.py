@@ -2,13 +2,13 @@
 """EFI keeper: the book. Create, hall, choose, split.
 
 Happy BOOTX64. Cairn has only ingle. FAT32 at LBA 2048 is KINDLING
-`85C7-AA81` with LFN `keeper`, an `EFI` directory, `LEAF`, wax `hand`,
-and no `hands`/`twin`. First boot creates those two (716/716) and inks
-`hand`. Hall answers: the name is cut, the word sleeps in the twin. Boot2
-is the hall: n oak, choose 2 (this fire knows you). Dismiss gives the name
-back. A flipped twin byte prints `the book is split`. A lone wax `hands`
-(no twin) still enlists. A second stick with wax 716/32 still enlists.
-Ciphertexts differ. Does not touch the live Databar.
+`85C7-AA81` with LFN `keeper`, an `EFI` directory, `LEAF`. KINDLOG at
+LBA 64 (type 0x6c, magic KLOG) holds `hands`/`twin`/`hand` at fixed
+LBAs. First boot inks those seals. Hall answers: the name is cut, the
+word sleeps in the twin. Boot2 is the hall: n oak, choose 2 (this fire
+knows you). Dismiss gives the name back. A flipped twin byte prints
+`the book is split`. Empty KINDLOG still enlists. FAT leftover hands
+do not split the hall. Ciphertexts differ. Does not touch the live Databar.
 """
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+import kindlog
 
 ROOT = Path(__file__).resolve().parents[1]
 QEMU = os.environ.get("QEMU", "qemu-system-x86_64")
@@ -217,6 +219,9 @@ def write_stick(spark: bytes, wax_book: bool, lone_hands: bool = False) -> None:
     fat = PART_LBA * 512
     if int.from_bytes(img[fat + 67 : fat + 71], "little") != KINDLING_VOL:
         raise SystemExit("FAIL efi-keeper (planted volume serial is not KINDLING)")
+    kindlog.plant_slice(img)
+    LOCS.clear()
+    LOCS.update(kindlog.locs())
     Path(IMG).write_bytes(img)
 
 
@@ -307,27 +312,19 @@ def walk_root(img: bytes, part_lba: int = PART_LBA) -> dict[str, tuple[int, int]
 
 
 def remember_book(img: bytes) -> str | None:
+    miss = kindlog.remember_book(img, NAME, WORD)
+    if miss:
+        return miss
+    LOCS.clear()
+    LOCS.update(kindlog.locs())
     files = walk_root(img)
-    for nm, sz in (("hands", SEAL_LEN), ("twin", SEAL_LEN), ("hand", HAND_LEN)):
+    for nm in ("hands", "twin"):
         if nm not in files:
-            return f"create never laid {nm}"
+            continue
         off, size = files[nm]
-        if size != sz:
-            return f"{nm} is {size}, want {sz}"
-        LOCS[nm] = off
-    hoff = LOCS["hand"]
-    if img[hoff : hoff + len(NAME)] != NAME.encode() or img[hoff + len(NAME)] != 0:
-        return "WRITE(10) never landed the name"
-    hands = img[LOCS["hands"] : LOCS["hands"] + SEAL_LEN]
-    twin = img[LOCS["twin"] : LOCS["twin"] + SEAL_LEN]
-    if hands == twin:
-        return "hands and twin ciphertexts compare equal"
-    if all(b == 0 for b in hands) or all(b == 0 for b in twin):
-        return "book still wax after enlist"
-    if WORD.encode() in img:
-        return "the word is on the disk"
-    if NAME.encode() in hands and NAME.encode() in twin:
-        return "keeper names sit in the sealed blobs"
+        blob = img[off : off + size]
+        if any(blob):
+            return f"FAT {nm} was inked"
     return None
 
 
@@ -642,6 +639,8 @@ def main() -> int:
         t = serial.replace("\r", "")
         if "kindling: fat" not in t:
             return fail("no fat", serial)
+        if "kindling: 6c 64 kindlog" not in t:
+            return fail("KINDLOG slice not named", serial)
         if "kindling: ingle ok\ningle\n" not in t:
             return fail("spark never wrote its name", serial)
         serial = serial_has("who keeps this fire", 8)

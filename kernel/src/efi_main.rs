@@ -13,6 +13,7 @@ mod glass;
 mod house;
 mod idt;
 mod kbd;
+mod kindlog;
 mod mm;
 mod pci;
 mod sha256;

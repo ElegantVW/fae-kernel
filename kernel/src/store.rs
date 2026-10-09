@@ -2,8 +2,8 @@
 //!
 //! After MSC answers READ CAPACITY, Kindling walks MBR or GPT and paints
 //! each slice: `fat` / `kindlog` / `empty` / `other`. FAT stays the glean
-//! arm (ESP). KINDLOG magic `KLOG` is recognized this sitting, not mounted.
-//! No writes.
+//! arm (ESP). KINDLOG magic `KLOG` is the house volume; the book inks
+//! seals there at fixed LBAs.
 
 use crate::glass;
 use crate::start::serial_print;
@@ -54,6 +54,7 @@ impl Table {
 #[derive(Clone, Copy)]
 struct Part {
     start: u32,
+    secs: u32,
     mbr_ty: u8,
     gpt: bool,
     guid: [u8; 16],
@@ -70,6 +71,7 @@ struct Map {
 
 const EMPTY_PART: Part = Part {
     start: 0,
+    secs: 0,
     mbr_ty: 0,
     gpt: false,
     guid: [0; 16],
@@ -180,13 +182,14 @@ fn push(p: Part) {
     m.n = m.n.saturating_add(1);
 }
 
-fn classify_at(start: u32, mbr_ty: u8, gpt: bool, guid: [u8; 16]) {
+fn classify_at(start: u32, secs: u32, mbr_ty: u8, gpt: bool, guid: [u8; 16]) {
     let kind = match crate::usb::read_sec(start) {
         Some(buf) => classify(buf),
         None => Kind::Other,
     };
     push(Part {
         start,
+        secs,
         mbr_ty,
         gpt,
         guid,
@@ -196,15 +199,32 @@ fn classify_at(start: u32, mbr_ty: u8, gpt: bool, guid: [u8; 16]) {
 
 struct Slot {
     start: u32,
+    secs: u32,
     ty: u8,
 }
 
 fn mbr_slots(buf: u64) -> ([Slot; 4], bool) {
     let mut slots = [
-        Slot { start: 0, ty: 0 },
-        Slot { start: 0, ty: 0 },
-        Slot { start: 0, ty: 0 },
-        Slot { start: 0, ty: 0 },
+        Slot {
+            start: 0,
+            secs: 0,
+            ty: 0,
+        },
+        Slot {
+            start: 0,
+            secs: 0,
+            ty: 0,
+        },
+        Slot {
+            start: 0,
+            secs: 0,
+            ty: 0,
+        },
+        Slot {
+            start: 0,
+            secs: 0,
+            ty: 0,
+        },
     ];
     let mut gpt = false;
     let mut i = 0usize;
@@ -212,10 +232,11 @@ fn mbr_slots(buf: u64) -> ([Slot; 4], bool) {
         let e = buf + 446 + i as u64 * 16;
         let ty = r8(e + 4);
         let start = r32le(e + 8);
+        let secs = r32le(e + 12);
         if ty == 0xEE {
             gpt = true;
         }
-        slots[i] = Slot { start, ty };
+        slots[i] = Slot { start, secs, ty };
         i += 1;
     }
     (slots, gpt)
@@ -273,7 +294,7 @@ fn probe_gpt() {
     }
     let mut k = 0usize;
     while k < n {
-        classify_at(raw[k].0, 0, true, raw[k].1);
+        classify_at(raw[k].0, 0, 0, true, raw[k].1);
         k += 1;
     }
 }
@@ -306,6 +327,7 @@ pub fn probe() {
         m.table = Table::Disk;
         push(Part {
             start: 0,
+            secs: n_lba,
             mbr_ty: 0,
             gpt: false,
             guid: [0; 16],
@@ -324,7 +346,7 @@ pub fn probe() {
             while i < 4 {
                 if slots[i].ty != 0 && slots[i].ty != 0xEE && slots[i].start != 0 {
                     map_mut().table = Table::Mbr;
-                    classify_at(slots[i].start, slots[i].ty, false, [0; 16]);
+                    classify_at(slots[i].start, slots[i].secs, slots[i].ty, false, [0; 16]);
                 }
                 i += 1;
             }
@@ -335,7 +357,7 @@ pub fn probe() {
     let mut i = 0usize;
     while i < 4 {
         if slots[i].ty != 0 && slots[i].start != 0 {
-            classify_at(slots[i].start, slots[i].ty, false, [0; 16]);
+            classify_at(slots[i].start, slots[i].secs, slots[i].ty, false, [0; 16]);
         }
         i += 1;
     }
@@ -348,6 +370,20 @@ pub fn first_fat() -> Option<u32> {
     while i < m.n {
         if m.parts[i as usize].kind == Kind::Fat {
             return Some(m.parts[i as usize].start);
+        }
+        i = i.saturating_add(1);
+    }
+    None
+}
+
+/// First KINDLOG slice: start LBA and sector count.
+pub fn first_kindlog() -> Option<(u32, u32)> {
+    let m = map();
+    let mut i = 0u8;
+    while i < m.n {
+        let p = m.parts[i as usize];
+        if p.kind == Kind::Kindlog && p.start != 0 && p.secs >= 6 {
+            return Some((p.start, p.secs));
         }
         i = i.saturating_add(1);
     }

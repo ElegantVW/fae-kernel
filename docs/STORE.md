@@ -27,16 +27,17 @@ LBA count. Each following line is type hex, start LBA, and a word. GPT type
 is the first group of the type GUID. `fat` on its own line is the glean arm
 claimed from the first FAT slice.
 
-`kindlog` means the first four bytes of that slice are `KLOG`. G44 names it.
-G45 lays the superblock.
+`kindlog` means the first four bytes of that slice are `KLOG`. G45 lays the
+superblock and inks the book there.
 
 ## Two jobs for FAT
 
 UEFI loads `EFI/BOOT/BOOTX64.EFI` from a FAT ESP. That is why FAT is in the
-path at all. Packed **cairn** stays a file on that ESP. Live seals (`hands` /
-`twin` / `LEAF` / wax `hand`) were FAT dirents on the same volume; create on
-a live ESP failed iron. `glean` / `stow` / `spawn` still speak FAT this
-sitting so the hall keeps working. KINDLOG is the house volume.
+path at all. Packed **cairn** stays a file on that ESP. `LEAF` and sparks still glean the
+FAT root. Live seals (`hands` / `twin` / `hand`) live on KINDLOG at fixed
+LBAs: super `KLOG` at relative 0, `hands` at 1–2, `twin` at 3–4, `hand` at 5.
+On the Databar that slice is MBR type `0x6c`, LBA 64, 1984 sectors — the
+1 MiB headroom before the ESP. FAT create is no longer the account plan.
 
 ## Buses
 
@@ -51,5 +52,6 @@ A dump on that laptop is the Databar until then.
 
 ## This sitting
 
-Read only. `store::probe` after the USB host is live. No partition of the
-Databar. No KINDLOG ink. Iron photo of this glass is the map for G45.
+KINDLOG is the house. Host plants the MBR slot and superblock. `enlist`
+WRITE(10)+rereads only those data LBAs, and only when the FAT arm is
+KINDLING `85C7-AA81`. The superblock is not rewritten by the kernel.

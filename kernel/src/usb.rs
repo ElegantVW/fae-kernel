@@ -1205,6 +1205,34 @@ pub(crate) fn disk_geom() -> Option<(u32, u32)> {
     Some((h.blk, h.n_lba))
 }
 
+/// WRITE(10)+reread one sector. Only KINDLOG data LBAs (not the superblock,
+/// not FAT, not MBR). KINDLING `85C7-AA81` still gates `msc_write10`.
+pub(crate) fn write_kindlog(lba: u32, src: &[u8]) -> bool {
+    let Some((start, secs)) = crate::store::first_kindlog() else {
+        return false;
+    };
+    if lba <= start || lba >= start.saturating_add(secs) {
+        return false;
+    }
+    let Some(h) = host_mut().as_mut() else {
+        return false;
+    };
+    if h.msc_slot == 0 || h.blk != 512 || h.vol.vol_id != KINDLING_VOL {
+        return false;
+    }
+    let buf = h.data + MSC_DATA;
+    unsafe {
+        core::ptr::write_bytes(buf as *mut u8, 0, 512);
+    }
+    let n = src.len().min(512);
+    let mut i = 0usize;
+    while i < n {
+        w8(buf + i as u64, src[i]);
+        i += 1;
+    }
+    commit_sec(h, lba)
+}
+
 fn claim_first_fat() -> bool {
     let Some(lba) = crate::store::first_fat() else {
         return false;

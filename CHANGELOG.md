@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## kindlog-g45 (2026-10-09)
+
+- The book leaves FAT. KINDLOG is a second MBR slice (`0x6c`, LBA 64, 1984 sectors on the Databar headroom) with superblock `KLOG`. `hands` / `twin` / `hand` sit at relative LBAs 1–2 / 3–4 / 5. `enlist` WRITE(10)+rereads only those sectors, KINDLING `85C7-AA81` only. FAT stays the ESP; leftover FAT book files do not split the hall.
+- efi-keeper plants the slice; serial `6c 64 kindlog`; after enlist the seals are on KINDLOG. `scripts/plant-kindlog.py` lays the same slot on a raw disk without shrinking FAT.
+
 ## store-g44 (2026-10-09)
 
 - After `msc` the glass names the disk: table (`mbr` / `gpt` / `disk`), block size, LBA count, then each partition (`fat` / `kindlog` / `empty` / `other`) with type hex and start LBA. FAT stays the glean/stow arm. No writes. KINDLOG magic `KLOG` is recognized, not mounted.
