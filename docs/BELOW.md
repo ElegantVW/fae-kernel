@@ -1,6 +1,6 @@
 # Below — the gate
 
-Firmware → loader (off the disk) → Kindling spark. House light (G15–G48) is on.
+Firmware → loader (off the disk) → Kindling spark. House light (G15–G49) is on.
 Linux ELF waits on its own gate. This file staying green is still the law.
 
 Run: `make below`  
@@ -70,6 +70,7 @@ Limine (`make serial`) is a **crutch**, out of this gate.
 | G46 | Book leaves skip the cairn when KINDLOG is named | efi-keeper packed wax `hands` still inks KINDLOG | yes |
 | G47 | KINDLOG live is cached at probe; glass paints `the log is lit` | efi-keeper `6c 64 1984 kindlog` + `the log is lit` | yes |
 | G48 | WRITE flushes the media before reread; a miss recovers the bus | efi-keeper still `the name is cut` | yes |
+| G49 | WRITE waits for NAND; a stalled pipe is healed before `roll` | efi-keeper still `the name is cut` | yes |
 
 Firmware extras (this sitting): VGA mode 3 by registers, 8×16 plane-2 font (`ok font` in `make below`), PIC ICW1–4, real-mode IVT + 32/64-bit IDT (`cerne-fw: trap`), 64-bit `lgdt`, `make below` includes `fw-trap`. Well maps through 3 GiB (`PDPT[0..2]`); `PDPT[3]` stays free for the LAPIC.
 

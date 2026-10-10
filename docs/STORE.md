@@ -60,8 +60,9 @@ A dump on that laptop is the Databar until then.
 ## This sitting
 
 KINDLOG is the house. Host plants the MBR slot and superblock, and waxes
-the data LBAs unless a sealed book is already held. `enlist` WRITE(10)+flush+rereads
-only those data LBAs, and only when the FAT arm is KINDLING `85C7-AA81`.
+the data LBAs unless a sealed book is already held. `enlist` WRITE(10)+settle+rereads
+only those data LBAs, and only when the FAT arm is KINDLING `85C7-AA81`. A busy
+pipe is stopped and reset so a miss cannot split the next `roll`.
 Book names never fall through to FAT while a KINDLOG slice is named; a
 super that does not check out paints `the log is dark`. The superblock is
 not rewritten by the kernel. Live is the `KLOG` super (magic, version,

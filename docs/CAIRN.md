@@ -100,7 +100,7 @@ first (kind 0). The ATA rite:
 
 When that name is missing (or there is no cairn) and MSC saw a FAT volume,
 `stow` takes the volume's **root** by the same Gleam name. Exact measure.
-WRITE(10) each sector, SYNCHRONIZE CACHE, READ(10) compare. The volume serial must be KINDLING
+WRITE(10) each sector, settle, READ(10) compare. The volume serial must be KINDLING
 `85C7-AA81` (Linux vfat UUID). A different volume is `-EPERM`. DMA dest
 stays the MSC page. On FAT32 a missing or empty root file is created
 (allocate clusters, LFN + 8.3, both FAT copies). A present file of another

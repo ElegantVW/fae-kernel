@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## ink-g49 (2026-10-10)
+
+- Iron G48 still painted `the ink will not hold` / `the book is split` / `kindling: gleam exit 1`. G48 EFI was what booted; KINDLOG LBA 65 was a full 512-byte seal and 66–69 stayed wax. SYNCHRONIZE CACHE (10) stalled the Databar while NAND was still programming, so the reread never came back and `roll` gleaned `-EIO`. That command is gone. After WRITE the kernel waits (10 ms, then 100, then 200) and retries with FUA. A failed bulk transfer stops and resets both MSC pipes (xHCI + Bulk-Only) so the hall can still glean. KINDLING `85C7-AA81` only.
+
 ## ink-g48 (2026-10-10)
 
 - Iron G47 painted `the log is lit`, then `the ink will not hold` / `the book is split` / `kindling: gleam exit 1`. WRITE(10) of KINDLOG LBA 65 landed; the immediate reread missed, so `stow` stopped before the twin and `roll` gleaned `-EIO`. `commit_prepared` now SYNCHRONIZE CACHE (10) after WRITE, settles, then READ(10) compares; five tries; TUR recovers the pipe so a miss stays in the hall. KINDLING `85C7-AA81` only.

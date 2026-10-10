@@ -22,6 +22,7 @@ const TRB_ADDRESS: u32 = 11;
 const TRB_CONFIG_EP: u32 = 12;
 const TRB_EVAL: u32 = 13;
 const TRB_RESET_EP: u32 = 14;
+const TRB_STOP_EP: u32 = 15;
 const TRB_SET_DEQ: u32 = 16;
 const TRB_XFER: u32 = 32;
 const TRB_CMD: u32 = 33;
@@ -126,6 +127,7 @@ struct Host {
     msc_slot: u8,
     msc_out_dci: u8,
     msc_in_dci: u8,
+    msc_iface: u8,
     msc_tag: u32,
     fat: bool,
     vol_ok: bool,
@@ -593,6 +595,63 @@ fn heal_ep0(h: &mut Host, slot: u8) {
     recover();
 }
 
+fn dci_ep_addr(dci: u8) -> u8 {
+    let num = dci / 2;
+    if dci & 1 == 0 { num } else { num | 0x80 }
+}
+
+fn heal_dci(h: &mut Host, dci: u8, ring: Ring) {
+    let slot = h.msc_slot;
+    if slot == 0 || dci == 0 {
+        return;
+    }
+    let id = (dci as u32) << 16;
+    let sl = (slot as u32) << 24;
+    let _ = command(h, 0, 0, (TRB_STOP_EP << 10) | id | sl);
+    let _ = command(h, 0, 0, (TRB_RESET_EP << 10) | id | sl);
+    let deq = ring.base + ring.i as u64 * 16;
+    let _ = command(
+        h,
+        deq | (ring.c as u64 & 1),
+        0,
+        (TRB_SET_DEQ << 10) | id | sl,
+    );
+}
+
+fn clear_halt(h: &mut Host, ep: u8) {
+    let mut s = [0u8; 8];
+    s[0] = 0x02;
+    s[1] = 1;
+    s[4] = ep;
+    let _ = control(h, h.msc_slot, s, 0, 0, false);
+}
+
+/// Bulk-Only reset + xHCI stop/reset of both MSC pipes. Cheap flash stalls
+/// a READ while NAND is still programming the WRITE we just finished.
+fn heal_bulk(h: &mut Host) {
+    if h.msc_slot == 0 {
+        return;
+    }
+    let out = h.bulk_out;
+    let inn = h.bulk_in;
+    let od = h.msc_out_dci;
+    let id = h.msc_in_dci;
+    heal_dci(h, od, out);
+    heal_dci(h, id, inn);
+    let mut s = [0u8; 8];
+    s[0] = 0x21;
+    s[1] = 0xFF;
+    s[4] = h.msc_iface;
+    let _ = control(h, h.msc_slot, s, 0, 0, false);
+    if od != 0 {
+        clear_halt(h, dci_ep_addr(od));
+    }
+    if id != 0 {
+        clear_halt(h, dci_ep_addr(id));
+    }
+    recover();
+}
+
 /// Setup, Data, and Status are separate TDs (xHCI 4.11.2.2). TRT IN=3, OUT=2.
 /// The first TRB stays software-owned until the rest are written — Intel
 /// prefetches EP0 as soon as Address Device leaves the endpoint Running.
@@ -1049,28 +1108,31 @@ fn bot(h: &mut Host, cdb: &[u8], buf: u64, data_len: u32, din: bool) -> bool {
     }
     write_cbw(h.data, tag, data_len, din && data_len != 0, cdb);
     if !bulk_out(h, h.data, 31) {
+        heal_bulk(h);
         return false;
     }
+    let mut data_ok = true;
     if data_len != 0 {
-        let ok = if din {
+        data_ok = if din {
             bulk_in(h, buf, data_len)
         } else {
             bulk_out(h, buf, data_len)
         };
-        if !ok {
-            return false;
+        if !data_ok {
+            heal_bulk(h);
         }
     }
     unsafe {
         core::ptr::write_bytes((h.data + MSC_CSW) as *mut u8, 0, 16);
     }
     if !bulk_in(h, h.data + MSC_CSW, 13) {
+        heal_bulk(h);
         return false;
     }
     let sig = r32(h.data + MSC_CSW);
     let stag = r32(h.data + MSC_CSW + 4);
     let status = r8(h.data + MSC_CSW + 12);
-    sig == CSW_SIG && stag == tag && status == 0
+    data_ok && sig == CSW_SIG && stag == tag && status == 0
 }
 
 fn r16le(a: u64) -> u16 {
@@ -1210,7 +1272,7 @@ pub(crate) fn disk_geom() -> Option<(u32, u32)> {
     Some((h.blk, h.n_lba))
 }
 
-/// WRITE(10)+flush+reread one sector. Only KINDLOG data LBAs (not the
+/// WRITE(10)+settle+reread one sector. Only KINDLOG data LBAs (not the
 /// superblock, not FAT, not MBR). KINDLING `85C7-AA81` still gates
 /// `msc_write10`.
 pub(crate) fn write_kindlog(lba: u32, src: &[u8]) -> bool {
@@ -1258,17 +1320,10 @@ fn claim_first_fat() -> bool {
     }
 }
 
-fn msc_read10(h: &mut Host, lba: u32, buf: u64, blocks: u16, blk: u32) -> bool {
-    if blocks == 0 || blk == 0 {
-        return false;
-    }
-    let bytes = blk.saturating_mul(blocks as u32);
-    if bytes == 0 || bytes as usize > PAGE {
-        return false;
-    }
-    let cdb = [
-        0x28,
-        0,
+fn cdb10(op: u8, lba: u32, blocks: u16, fua: bool) -> [u8; 10] {
+    [
+        op,
+        if fua { 0x08 } else { 0 },
         (lba >> 24) as u8,
         (lba >> 16) as u8,
         (lba >> 8) as u8,
@@ -1277,35 +1332,40 @@ fn msc_read10(h: &mut Host, lba: u32, buf: u64, blocks: u16, blk: u32) -> bool {
         (blocks >> 8) as u8,
         blocks as u8,
         0,
-    ];
-    bot(h, &cdb, buf, bytes, true)
+    ]
+}
+
+fn msc_rw(
+    h: &mut Host,
+    op: u8,
+    lba: u32,
+    buf: u64,
+    blocks: u16,
+    blk: u32,
+    din: bool,
+    fua: bool,
+) -> bool {
+    if blocks == 0 || blk == 0 {
+        return false;
+    }
+    let bytes = blk.saturating_mul(blocks as u32);
+    if bytes == 0 || bytes as usize > PAGE {
+        return false;
+    }
+    let cdb = cdb10(op, lba, blocks, fua);
+    bot(h, &cdb, buf, bytes, din)
+}
+
+fn msc_read10(h: &mut Host, lba: u32, buf: u64, blocks: u16, blk: u32) -> bool {
+    msc_rw(h, 0x28, lba, buf, blocks, blk, true, false)
 }
 
 /// WRITE(10) of `blocks`. Refuses unless this volume is KINDLING `85C7-AA81`.
-fn msc_write10(h: &mut Host, lba: u32, buf: u64, blocks: u16, blk: u32) -> bool {
+fn msc_write10_fua(h: &mut Host, lba: u32, buf: u64, blocks: u16, blk: u32, fua: bool) -> bool {
     if h.vol.vol_id != KINDLING_VOL {
         return false;
     }
-    if blocks == 0 || blk == 0 {
-        return false;
-    }
-    let bytes = blk.saturating_mul(blocks as u32);
-    if bytes == 0 || bytes as usize > PAGE {
-        return false;
-    }
-    let cdb = [
-        0x2A,
-        0,
-        (lba >> 24) as u8,
-        (lba >> 16) as u8,
-        (lba >> 8) as u8,
-        lba as u8,
-        0,
-        (blocks >> 8) as u8,
-        blocks as u8,
-        0,
-    ];
-    bot(h, &cdb, buf, bytes, false)
+    msc_rw(h, 0x2A, lba, buf, blocks, blk, false, fua)
 }
 
 const GLEAN_MAX: u64 = 1 << 20;
@@ -1911,25 +1971,20 @@ fn restore_verify(h: &mut Host) {
     }
 }
 
-/// SYNCHRONIZE CACHE (10). Cheap sticks may CHECK CONDITION; recover the pipe.
-fn flush_media(h: &mut Host) {
-    let cdb = [0x35, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    if !bot(h, &cdb, 0, 0, false) {
-        let _ = msc_ready(h);
-    }
-}
-
-/// WRITE(10) the sector already copied into MSC_VERIFY; flush; READ(10) compare.
-/// Five tries. TUR + settle between misses — iron flash can lag the cache.
+/// WRITE(10) the sector already copied into MSC_VERIFY; settle; READ(10) compare.
+/// Five tries. First try is a short wait; later tries FUA and wait for NAND.
+/// A miss heals the bulk pipes so the next `roll` can still glean.
 fn commit_prepared(h: &mut Host, lba: u32) -> bool {
     let mut tries = 0u8;
     while tries < 5 {
         restore_verify(h);
-        if msc_write10(h, lba, h.data + MSC_DATA, 1, 512) {
-            flush_media(h);
+        let fua = tries > 0;
+        let wait = if tries == 0 { 10 } else if tries == 1 { 100 } else { 200 };
+        if msc_write10_fua(h, lba, h.data + MSC_DATA, 1, 512, fua) {
             recover();
-            settle(h, 20);
-            if msc_read10(h, lba, h.data + MSC_DATA, 1, 512) && sector_match(h) {
+            settle(h, wait);
+            if msc_rw(h, 0x28, lba, h.data + MSC_DATA, 1, 512, true, fua) && sector_match(h)
+            {
                 return true;
             }
         }
@@ -2526,7 +2581,7 @@ fn finish_write(h: &mut Host, clus: u32, len: u64, buf: u64) -> u64 {
 
 /// Re-ink a named root file, or create it when missing / empty.
 /// Exact measure. KINDLING `85C7-AA81` only. WRITE(10) each sector,
-/// flush, READ(10) compare. DMA dest stays MSC_DATA. FAT32 create; FAT16 re-inks.
+/// settle, READ(10) compare. DMA dest stays MSC_DATA. FAT32 create; FAT16 re-inks.
 pub fn stow_fat(name: &[u8], buf: u64, len: u64) -> u64 {
     if buf == 0 || len == 0 || len > GLEAN_MAX || name.is_empty() || name.len() > 64 {
         return err(EPERM);
@@ -2589,6 +2644,9 @@ fn msc_ready(h: &mut Host) -> bool {
         }
         let sense = [0x03, 0, 0, 0, 18, 0];
         let _ = bot(h, &sense, h.data + MSC_DATA, 18, true);
+        if n == 0 {
+            heal_bulk(h);
+        }
         pause();
         n = n.saturating_add(1);
     }
@@ -2624,6 +2682,7 @@ fn try_msc(
     }
     bump(M_BOT);
     h.msc_slot = slot;
+    h.msc_iface = iface;
     h.msc_tag = 1;
     recover();
     let _ = msc_ready(h);
@@ -3073,6 +3132,7 @@ fn bringup(bar: u64, len: u64) -> bool {
         msc_slot: 0,
         msc_out_dci: 0,
         msc_in_dci: 0,
+        msc_iface: 0,
         msc_tag: 1,
         fat: false,
         vol_ok: false,
