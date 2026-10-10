@@ -225,8 +225,9 @@ fn take_name(name_ptr: u64) -> Result<([u8; 64], usize), u64> {
 }
 
 /// Gather a leaf's bytes: `rdi` = name, `rsi` = buf, `rdx` = len (cap 1 MiB).
-/// Cairn first. Book leaves (`hands` / `twin` / `hand`) then KINDLOG when
-/// that volume is live. Other names, if missing from the cairn, glean the
+/// Cairn first. Book leaves (`hands` / `twin` / `hand`) skip the cairn when a
+/// KINDLOG slice is named — the paved pack still carries wax copies, and those
+/// must not hide the house. Other names, if missing from the cairn, glean the
 /// FAT volume's root. Returns bytes
 /// copied (a short read when the leaf is longer is honest, not an error) or
 /// `-errno`. v0 trusts mapped RAM for pointers; spawn's realm still lets the
@@ -240,6 +241,9 @@ pub fn glean(name_ptr: u64, buf: u64, len: u64) -> u64 {
         Err(e) => return err(e),
     };
     let nm = &name[..nl];
+    if crate::kindlog::is_book_leaf(nm) && crate::kindlog::named() {
+        return glean_volume(nm, buf, len, open().is_some());
+    }
     match open() {
         Some(c) => match find(&c, nm, 0) {
             Ok((da, dl)) => copy_leaf(da, dl, buf, len),
@@ -262,8 +266,13 @@ fn copy_leaf(da: u64, dl: u64, buf: u64, len: u64) -> u64 {
 }
 
 fn glean_volume(name: &[u8], buf: u64, len: u64, had_cairn: bool) -> u64 {
-    if crate::kindlog::is_book_leaf(name) && crate::kindlog::live() {
-        return crate::kindlog::glean(name, buf, len);
+    if crate::kindlog::is_book_leaf(name) {
+        if crate::kindlog::live() {
+            return crate::kindlog::glean(name, buf, len);
+        }
+        if crate::kindlog::named() {
+            return err(ENOENT);
+        }
     }
     if crate::usb::fat_live() {
         crate::usb::glean_fat(name, buf, len)
@@ -301,8 +310,11 @@ fn cairn_xor(base: u64, len: u64) -> u32 {
 }
 
 /// Lay bytes down. Cairn first (kind 0): re-ink a leaf with the same
-/// measure (`rdx` must equal the leaf's `datalen`). Book leaves then
-/// KINDLOG when live. Other names, if missing from the cairn, stow the
+/// measure (`rdx` must equal the leaf's `datalen`). Book leaves skip the
+/// cairn when a KINDLOG slice is named, then KINDLOG when live. A named
+/// slice that is not live paints `the log is dark` for those names and
+/// does not fall through to FAT.
+/// Other names, if missing from the cairn, stow the
 /// FAT volume's root — WRITE(10) each sector, READ(10) compare, KINDLING
 /// `85C7-AA81` only. FAT32 creates a missing or empty root file of `len`;
 /// a present file of another non-zero size is `-EPERM`. FAT16 re-inks only.
@@ -319,6 +331,9 @@ pub fn stow(name_ptr: u64, buf: u64, len: u64) -> u64 {
         Err(e) => return err(e),
     };
     let nm = &name[..nl];
+    if crate::kindlog::is_book_leaf(nm) && crate::kindlog::named() {
+        return stow_volume(nm, buf, len, open().is_some());
+    }
     match open() {
         Some(c) => match find(&c, nm, 0) {
             Ok((da, dl)) => {
@@ -335,8 +350,14 @@ pub fn stow(name_ptr: u64, buf: u64, len: u64) -> u64 {
 }
 
 fn stow_volume(name: &[u8], buf: u64, len: u64, had_cairn: bool) -> u64 {
-    if crate::kindlog::is_book_leaf(name) && crate::kindlog::live() {
-        return crate::kindlog::stow(name, buf, len);
+    if crate::kindlog::is_book_leaf(name) {
+        if crate::kindlog::live() {
+            return crate::kindlog::stow(name, buf, len);
+        }
+        if crate::kindlog::named() {
+            crate::kindlog::speak_dark();
+            return err(ENODEV);
+        }
     }
     if !crate::usb::fat_live() {
         return if had_cairn { err(ENOENT) } else { err(ENODEV) };

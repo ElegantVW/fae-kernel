@@ -2,8 +2,9 @@
 """Plant a KINDLOG slice on a raw disk (the Databar) or an image file.
 
 Does not shrink FAT. Slot 0 must already be the KINDLING ESP at LBA 2048.
-Slot 1 must be empty, or already this KINDLOG. Superblock only — existing
-seals stay. Does not touch EFI files.
+Slot 1 must be empty, or already this KINDLOG. Superblock is rewritten.
+A sealed book (name in `hand`) stays; gap entropy is waxed so the hall
+does not split. Does not touch EFI files.
 """
 from __future__ import annotations
 
@@ -66,25 +67,44 @@ def main() -> int:
 
     kindlog.put_mbr_slot(mbr, 1, kindlog.KLOG_TYPE, kindlog.KLOG_START, kindlog.KLOG_SECS)
     super_blob = kindlog.superblock()
+    book_off = (kindlog.KLOG_START + 1) * 512
+    book_len = 5 * 512
+    waxed = False
     with open(dev, "rb+") as f:
         f.write(mbr)
         f.seek(kindlog.KLOG_START * 512)
         f.write(super_blob)
+        f.seek(book_off)
+        data = f.read(book_len)
+        mini = bytearray((kindlog.KLOG_START + 6) * 512)
+        mini[kindlog.KLOG_START * 512 : kindlog.KLOG_START * 512 + 512] = super_blob
+        if len(data) == book_len:
+            mini[book_off : book_off + book_len] = data
+        if not kindlog.held(bytes(mini)):
+            f.seek(book_off)
+            f.write(bytes(book_len))
+            waxed = True
         f.flush()
         os.fsync(f.fileno())
         f.seek(0)
         got_mbr = f.read(512)
         f.seek(kindlog.KLOG_START * 512)
         got_super = f.read(512)
+        f.seek(book_off)
+        got_book = f.read(book_len)
     if got_mbr[446 + 16 + 4] != kindlog.KLOG_TYPE:
         print("FAIL plant-kindlog (MBR slot1 did not stick)", file=sys.stderr)
         return 1
     if got_super[:4] != kindlog.KLOG_MAGIC:
         print("FAIL plant-kindlog (super did not stick)", file=sys.stderr)
         return 1
+    if waxed and got_book != bytes(book_len):
+        print("FAIL plant-kindlog (book wax did not stick)", file=sys.stderr)
+        return 1
     print(
         f"ok   kindlog 0x{kindlog.KLOG_TYPE:02x} {kindlog.KLOG_START} {kindlog.KLOG_SECS} "
         f"slot0 0x{ty0:02x} {start0} {secs0}"
+        + (" waxed" if waxed else " held")
     )
     return 0
 

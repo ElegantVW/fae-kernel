@@ -3,8 +3,11 @@
 //! Superblock magic `KLOG` at partition LBA 0. Seals sit at fixed relative
 //! LBAs: `hands` 1–2, `twin` 3–4, `hand` 5. FAT stays the ESP. Writes are
 //! MSC WRITE(10)+reread, KINDLING `85C7-AA81` only, never the superblock
-//! and never outside this slice.
+//! and never outside this slice. Live is the superblock itself (magic, ver,
+//! vol, secs, xor) — not the FAT `volume_id()` helper. Book leaves never
+//! fall through to FAT when a KINDLOG slice is named.
 
+use crate::start::serial_print;
 use crate::usb;
 
 const MAGIC: [u8; 4] = *b"KLOG";
@@ -74,10 +77,24 @@ fn super_ok(buf: u64, secs: u32) -> bool {
     let xor = r32le(buf + 16);
     ver == VERSION
         && vol == KINDLING_VOL
-        && vol == usb::volume_id()
         && n == secs
         && n >= MIN_SECS
         && xor == checksum(ver, vol, n)
+}
+
+/// Probe named a KINDLOG slice (MBR type `0x6c` or magic `KLOG`).
+pub fn named() -> bool {
+    crate::store::first_kindlog().is_some()
+}
+
+fn speak(s: &'static str) {
+    serial_print(s);
+    crate::glass::put_bytes(s.as_ptr(), s.len() as u64);
+}
+
+/// The slice is on the map but the superblock did not check out.
+pub fn speak_dark() {
+    speak("the log is dark\n");
 }
 
 /// Superblock checks out and the slice is big enough for the book.

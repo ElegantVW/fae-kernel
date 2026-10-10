@@ -7,8 +7,10 @@ LBA 64 (type 0x6c, magic KLOG) holds `hands`/`twin`/`hand` at fixed
 LBAs. First boot inks those seals. Hall answers: the name is cut, the
 word sleeps in the twin. Boot2 is the hall: n oak, choose 2 (this fire
 knows you). Dismiss gives the name back. A flipped twin byte prints
-`the book is split`. Empty KINDLOG still enlists. FAT leftover hands
-do not split the hall. Ciphertexts differ. Does not touch the live Databar.
+`the book is split`. Empty KINDLOG still enlists. Gap entropy in the KINDLOG
+data LBAs is waxed at plant so it cannot split the hall. A paved-like CAIRN
+that still packs wax `hands`/`twin`/`hand` still inks KINDLOG. FAT leftover
+hands do not split the hall. Ciphertexts differ. Does not touch the live Databar.
 """
 from __future__ import annotations
 
@@ -477,6 +479,89 @@ def wait_greet(after: str, name: str, timeout: float) -> str:
     return text
 
 
+def pack_cairn_book() -> Path:
+    """Paved-like CAIRN: ingle + keeper + wax book leaves. Iron G45 miss."""
+    out = ROOT / "spark" / "cairn-book.bin"
+    hand = ROOT / "spark" / "hand.bin"
+    hands = ROOT / "spark" / "hands.bin"
+    twin = ROOT / "spark" / "twin.bin"
+    hand.write_bytes(bytes(HAND_LEN))
+    hands.write_bytes(bytes(SEAL_LEN))
+    twin.write_bytes(bytes(SEAL_LEN))
+    subprocess.check_call(
+        [
+            "python3",
+            str(ROOT / "scripts" / "mkimg.py"),
+            "--loader",
+            str(ROOT / "ld" / "cerne-ld.bin"),
+            "--kernel",
+            str(ROOT / "kernel" / "kernel.fw.bin"),
+            "--out",
+            str(ROOT / "kindling-efi-keeper-pack.img"),
+            "--spark",
+            f"ingle={ROOT / 'spark' / 'ingle.bin'}",
+            "--spark",
+            f"keeper={ROOT / 'spark' / 'keeper.bin'}",
+            "--leaf",
+            f"hand={hand}",
+            "--leaf",
+            f"hands={hands}",
+            "--leaf",
+            f"twin={twin}",
+            "--cairn-out",
+            str(out),
+        ],
+        cwd=ROOT,
+    )
+    blob = out.read_bytes()
+    if b"hands" not in blob or b"twin" not in blob or b"hand" not in blob:
+        raise SystemExit("FAIL efi-keeper (packed cairn missing book leaves)")
+    return out
+
+
+def proof_packed_cairn(code: Path, spark: bytes) -> int:
+    """Paved CAIRN still carries wax `hands`. Enlist must ink KINDLOG."""
+    shutil.copyfile(pack_cairn_book(), CAIRN)
+    write_stick(spark, wax_book=False)
+    proc = boot_once(code)
+    sock = None
+    try:
+        serial = serial_has("who keeps this fire", 25)
+        t = serial.replace("\r", "")
+        if "who keeps this fire" not in t:
+            return fail("packed: no keeper prompt", serial)
+        if "the book is split" in t:
+            return fail("packed: cairn wax split the hall", serial)
+        sock = monitor()
+        if sock is None:
+            return fail("packed: no monitor")
+        send_keys(sock, f"{NAME}\n")
+        serial = serial_has("speak the word", 8)
+        send_keys(sock, f"{WORD}\n")
+        serial = serial_has("speak it again", 8)
+        send_keys(sock, f"{WORD}\n")
+        serial = serial_has(CUT, 8)
+        t = serial.replace("\r", "")
+        if "the ink will not hold" in t:
+            return fail("packed: cairn wax stole the ink", t)
+        if "the log is dark" in t:
+            return fail("packed: KINDLOG went dark", t)
+        if CUT not in t:
+            return fail("packed: enlist did not cut the name", t)
+        serial = serial_has(SLEEP, 8)
+        t = serial.replace("\r", "")
+        if SLEEP not in t:
+            return fail("packed: enlist did not lay the word in the twin", t)
+    finally:
+        if sock is not None:
+            sock.close()
+        stop(proc)
+    miss = remember_book(Path(IMG).read_bytes())
+    if miss:
+        return fail("packed: " + miss)
+    return 0
+
+
 def proof_lone(code: Path, spark: bytes) -> int:
     """Iron miss: `hands` landed, `twin` did not. A lone leaf is wax."""
     write_stick(spark, wax_book=False, lone_hands=True)
@@ -600,6 +685,15 @@ def main() -> int:
     spark = (ROOT / "spark" / "keeper.bin").read_bytes()
     if not spark or len(spark) > 8192:
         print("FAIL efi-keeper (keeper spark empty or too big)", file=sys.stderr)
+        return 1
+    gap = bytearray(2 * 1024 * 1024)
+    gap[65 * 512 : 70 * 512] = b"\xa5" * (5 * 512)
+    kindlog.plant_slice(gap)
+    if gap[65 * 512 : 70 * 512] != bytes(5 * 512):
+        print("FAIL efi-keeper (plant_slice left gap entropy)", file=sys.stderr)
+        return 1
+    if kindlog.held(bytes(gap)):
+        print("FAIL efi-keeper (wax KINDLOG looks held)", file=sys.stderr)
         return 1
     cairn_blob = ROOT / "spark" / "cairn-ingle.bin"
     subprocess.check_call(
@@ -822,6 +916,9 @@ def main() -> int:
     wax = proof_wax(code, spark)
     if wax != 0:
         return wax
+    packed = proof_packed_cairn(code, spark)
+    if packed != 0:
+        return packed
     print("ok   efi-keeper")
     return 0
 
@@ -837,5 +934,9 @@ if __name__ == "__main__":
                 pass
         try:
             os.unlink(ROOT / "kindling-efi-keeper-pack.img")
+        except FileNotFoundError:
+            pass
+        try:
+            os.unlink(ROOT / "spark" / "cairn-book.bin")
         except FileNotFoundError:
             pass

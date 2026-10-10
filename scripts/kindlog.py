@@ -46,7 +46,11 @@ def plant_slice(
     twin: bytes | None = None,
     hand: bytes | None = None,
 ) -> None:
-    """MBR slot 1 + superblock. Leaves data sectors alone unless given."""
+    """MBR slot 1 + superblock. Data sectors are wax unless a leaf is given.
+
+    Gap entropy in the Databar headroom is not a book — leaving it would
+    split the hall the first time KINDLOG is live.
+    """
     if start == 0 or secs < 6:
         raise ValueError("KINDLOG slice too small")
     if start + secs > len(img) // 512:
@@ -59,12 +63,18 @@ def plant_slice(
     if hands is not None:
         blob = hands + bytes(1024 - len(hands))
         img[off + REL_HANDS * 512 : off + REL_HANDS * 512 + 1024] = blob[:1024]
+    else:
+        img[off + REL_HANDS * 512 : off + REL_HANDS * 512 + 1024] = bytes(1024)
     if twin is not None:
         blob = twin + bytes(1024 - len(twin))
         img[off + REL_TWIN * 512 : off + REL_TWIN * 512 + 1024] = blob[:1024]
+    else:
+        img[off + REL_TWIN * 512 : off + REL_TWIN * 512 + 1024] = bytes(1024)
     if hand is not None:
         blob = hand + bytes(512 - len(hand))
         img[off + REL_HAND * 512 : off + REL_HAND * 512 + 512] = blob[:512]
+    else:
+        img[off + REL_HAND * 512 : off + REL_HAND * 512 + 512] = bytes(512)
 
 
 def locs(start: int = KLOG_START) -> dict[str, int]:
@@ -75,6 +85,29 @@ def locs(start: int = KLOG_START) -> dict[str, int]:
         "hand": base + REL_HAND * 512,
         "super": base,
     }
+
+
+def held(img: bytes, start: int = KLOG_START) -> bool:
+    """True when the slice already carries a sealed book (name in `hand`)."""
+    loc = locs(start)
+    super_off = loc["super"]
+    if img[super_off : super_off + 4] != KLOG_MAGIC:
+        return False
+    hands = img[loc["hands"] : loc["hands"] + SEAL_LEN]
+    twin = img[loc["twin"] : loc["twin"] + SEAL_LEN]
+    hand = img[loc["hand"] : loc["hand"] + HAND_LEN]
+    if hands == twin:
+        return False
+    if all(b == 0 for b in hands) or all(b == 0 for b in twin):
+        return False
+    n = bytes(hand).split(b"\x00", 1)[0]
+    if not n or len(n) > 31:
+        return False
+    if any(c < 32 or c > 126 for c in n):
+        return False
+    if n in hands and n in twin:
+        return False
+    return True
 
 
 def remember_book(img: bytes, name: str, word: str, start: int = KLOG_START) -> str | None:

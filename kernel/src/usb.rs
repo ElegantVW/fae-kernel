@@ -1190,11 +1190,16 @@ pub(crate) fn read_sec(lba: u32) -> Option<u64> {
         return None;
     }
     let buf = h.data + MSC_DATA;
-    if msc_read10(h, lba, buf, 1, 512) {
-        Some(buf)
-    } else {
-        None
+    let mut tries = 0u8;
+    while tries < 3 {
+        if msc_read10(h, lba, buf, 1, 512) {
+            return Some(buf);
+        }
+        let _ = msc_ready(h);
+        recover();
+        tries = tries.saturating_add(1);
     }
+    None
 }
 
 pub(crate) fn disk_geom() -> Option<(u32, u32)> {

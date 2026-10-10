@@ -10,6 +10,7 @@ use crate::start::serial_print;
 
 const MAX_PARTS: usize = 8;
 const KINDLOG_MAGIC: [u8; 4] = *b"KLOG";
+const KINDLOG_TYPE: u8 = 0x6C;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -183,10 +184,19 @@ fn push(p: Part) {
 }
 
 fn classify_at(start: u32, secs: u32, mbr_ty: u8, gpt: bool, guid: [u8; 16]) {
-    let kind = match crate::usb::read_sec(start) {
+    let mut kind = match crate::usb::read_sec(start) {
         Some(buf) => classify(buf),
         None => Kind::Other,
     };
+    if !gpt && mbr_ty == KINDLOG_TYPE && kind != Kind::Kindlog {
+        kind = match crate::usb::read_sec(start) {
+            Some(buf) => classify(buf),
+            None => Kind::Other,
+        };
+        if kind != Kind::Kindlog {
+            kind = Kind::Kindlog;
+        }
+    }
     push(Part {
         start,
         secs,

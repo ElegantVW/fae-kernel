@@ -1,5 +1,10 @@
 # fae-kernel changelog
 
+## kindlog-g46 (2026-10-10)
+
+- Iron G45 still painted `the ink will not hold`. The paved CAIRN packs wax `hands` / `twin` / `hand`, so `stow` found those leaves first and tried ATA — no KINDLOG write, FAT create never ran either. Book names skip the cairn when a KINDLOG slice is named. Live is the `KLOG` super itself (no FAT `volume_id()` helper). A named slice whose super does not check out paints `the log is dark` and does not fall through to FAT. WRITE(10) is still KINDLING `85C7-AA81` only.
+- Databar LBA 64–2047 was leftover reserved-area entropy. Two non-zero 716-byte sides would have split the hall the moment KINDLOG was live. `plant-kindlog` waxes `hands`/`twin`/`hand` unless a sealed book is already held. `read_sec` retries three times. MBR type `0x6c` still names `kindlog` after a stale first read. efi-keeper packs those wax leaves into CAIRN and still inks KINDLOG.
+
 ## kindlog-g45 (2026-10-09)
 
 - The book leaves FAT. KINDLOG is a second MBR slice (`0x6c`, LBA 64, 1984 sectors on the Databar headroom) with superblock `KLOG`. `hands` / `twin` / `hand` sit at relative LBAs 1–2 / 3–4 / 5. `enlist` WRITE(10)+rereads only those sectors, KINDLING `85C7-AA81` only. FAT stays the ESP; leftover FAT book files do not split the hall.
