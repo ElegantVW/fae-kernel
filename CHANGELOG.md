@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## kindlog-g47 (2026-10-10)
+
+- Iron G46 painted `the log is dark` twice then `the ink will not hold`: `live()` re-read the super at enlist and required MBR `secs` to equal the super's `n`. A named slice whose super already checked out at probe stays lit — the cache is the super's own size, not the MBR count. Glass paints sector count on each store line (`6c 64 1984 kindlog`) and `the log is lit` after `fat`. KINDLOG is classified before FAT (start LBA order). WRITE still uses that cached slice, KINDLING `85C7-AA81` only.
+
 ## kindlog-g46 (2026-10-10)
 
 - Iron G45 still painted `the ink will not hold`. The paved CAIRN packs wax `hands` / `twin` / `hand`, so `stow` found those leaves first and tried ATA — no KINDLOG write, FAT create never ran either. Book names skip the cairn when a KINDLOG slice is named. Live is the `KLOG` super itself (no FAT `volume_id()` helper). A named slice whose super does not check out paints `the log is dark` and does not fall through to FAT. WRITE(10) is still KINDLING `85C7-AA81` only.

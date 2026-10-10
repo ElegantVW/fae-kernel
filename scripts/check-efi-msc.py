@@ -3,7 +3,7 @@
 
 Port 1 is the keyboard so a HID-first scan would miss the stick on port 2.
 READ CAPACITY must print `kindling: msc`. The store dump names every
-partition (`store mbr`, `0c 2048 fat`, `83 4096 other`). FAT still
+partition (`store mbr`, `0c 2048 2048 fat`, `83 4096 1024 other`). FAT still
 prints `kindling: fat` and gleans `LEAF`. The image is MBR + FAT32 at
 LBA 2048 (like the Databar) plus a dummy type-0x83 slice. Gleam leaf
 `LEAF` (the page) and LFN `leaf` (the spark). Cairn has only ingle, so
@@ -324,11 +324,11 @@ def main() -> int:
             print("FAIL efi-msc (no store dump — dispatcher missed the table)")
             print(serial[-600:])
             return 1
-        if "kindling: 0c 2048 fat" not in t:
+        if "kindling: 0c 2048 2048 fat" not in t:
             print("FAIL efi-msc (FAT partition not named)")
             print(serial[-600:])
             return 1
-        if "kindling: 83 4096 other" not in t:
+        if "kindling: 83 4096 1024 other" not in t:
             print("FAIL efi-msc (dummy partition not named other)")
             print(serial[-600:])
             return 1

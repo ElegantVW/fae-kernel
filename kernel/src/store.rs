@@ -184,17 +184,24 @@ fn push(p: Part) {
 }
 
 fn classify_at(start: u32, secs: u32, mbr_ty: u8, gpt: bool, guid: [u8; 16]) {
-    let mut kind = match crate::usb::read_sec(start) {
+    let mut buf_at = crate::usb::read_sec(start);
+    let mut kind = match buf_at {
         Some(buf) => classify(buf),
         None => Kind::Other,
     };
     if !gpt && mbr_ty == KINDLOG_TYPE && kind != Kind::Kindlog {
-        kind = match crate::usb::read_sec(start) {
+        buf_at = crate::usb::read_sec(start);
+        kind = match buf_at {
             Some(buf) => classify(buf),
             None => Kind::Other,
         };
         if kind != Kind::Kindlog {
             kind = Kind::Kindlog;
+        }
+    }
+    if kind == Kind::Kindlog {
+        if let Some(buf) = buf_at {
+            crate::kindlog::remember(start, secs, buf);
         }
     }
     push(Part {
@@ -311,6 +318,7 @@ fn probe_gpt() {
 
 /// Walk the live MSC disk. Call after the USB host is installed.
 pub fn probe() {
+    crate::kindlog::reset();
     let m = map_mut();
     m.blk = 0;
     m.n_lba = 0;
@@ -364,12 +372,49 @@ pub fn probe() {
         return;
     }
     map_mut().table = Table::Mbr;
-    let mut i = 0usize;
-    while i < 4 {
-        if slots[i].ty != 0 && slots[i].start != 0 {
-            classify_at(slots[i].start, slots[i].secs, slots[i].ty, false, [0; 16]);
+    classify_mbr_slots(&slots);
+}
+
+/// Low start LBA first so KINDLOG (64) is read before the FAT ESP (2048).
+fn classify_mbr_slots(slots: &[Slot; 4]) {
+    let mut idx = [0usize, 1, 2, 3];
+    let mut n = 0usize;
+    while n < 4 {
+        let mut m = 0usize;
+        while m < 3 {
+            let a = idx[m];
+            let b = idx[m + 1];
+            let sa = if slots[a].ty == 0 {
+                u32::MAX
+            } else {
+                slots[a].start
+            };
+            let sb = if slots[b].ty == 0 {
+                u32::MAX
+            } else {
+                slots[b].start
+            };
+            if sa > sb {
+                idx[m] = b;
+                idx[m + 1] = a;
+            }
+            m = m.saturating_add(1);
         }
-        i += 1;
+        n = n.saturating_add(1);
+    }
+    n = 0;
+    while n < 4 {
+        let i = idx[n];
+        if slots[i].ty != 0 && slots[i].start != 0 {
+            classify_at(
+                slots[i].start,
+                slots[i].secs,
+                slots[i].ty,
+                false,
+                [0; 16],
+            );
+        }
+        n = n.saturating_add(1);
     }
 }
 
@@ -492,6 +537,8 @@ pub fn paint() {
         }
         i = put_str(&mut line, i, b" ");
         i = put_dec(&mut line, i, part.start);
+        i = put_str(&mut line, i, b" ");
+        i = put_dec(&mut line, i, part.secs);
         i = put_str(&mut line, i, b" ");
         i = put_str(&mut line, i, part.kind.word().as_bytes());
         speak(&line[..i]);

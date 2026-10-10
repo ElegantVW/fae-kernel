@@ -250,6 +250,7 @@ unsafe extern "C" fn after_cup() -> ! {
             serial_print("\n");
             crate::glass::put_bytes(line.as_ptr(), line.len() as u64);
             crate::glass::put_bytes(b"\n".as_ptr(), 1);
+            crate::kindlog::paint_live();
             if crate::usb::fat_live() {
                 let name = b"LEAF\0";
                 let mut page = [0u8; 64];

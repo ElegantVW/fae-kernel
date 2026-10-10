@@ -79,7 +79,7 @@ or one hub hop). Miss is `no xhci` (no PCI class `0x0C0330`) or
 BOT mass-storage device answers READ CAPACITY (every root port and hub
 child is scanned; HID does not stop the walk). After `msc`, `store` paints the table (`mbr` / `gpt` / `disk`), block size,
 LBA count, and a word per partition (`fat` / `kindlog` / `empty` / `other`)
-with type hex and start LBA (`docs/STORE.md`). Then `fat` when a FAT arm
+with type hex, start LBA, and sector count (`docs/STORE.md`). Then `fat` when a FAT arm
 was claimed (`no fat` if none). After HCRST the ports
 settle on the clock and are scanned twice so a late CCS (the boot stick)
 is seen. Port waits are milliseconds. PED is write-1-to-clear: an ack

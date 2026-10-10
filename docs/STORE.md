@@ -17,20 +17,23 @@ After `msc`:
 
 ```
 store mbr 512 8192
-0c 2048 fat
-83 4096 other
+0c 2048 2048 fat
+83 4096 1024 other
 fat
+the log is lit
 ```
 
 The header is table (`mbr` / `gpt` / `disk` / `none` / `miss`), block size,
-LBA count. Each following line is type hex, start LBA, and a word. GPT type
-is the first group of the type GUID. `fat` on its own line is the glean arm
-claimed from the first FAT slice.
+LBA count. Each following line is type hex, start LBA, sector count, and a
+word. GPT type is the first group of the type GUID. `fat` on its own line is
+the glean arm claimed from the first FAT slice. `the log is lit` means the
+KINDLOG super checked out (glass `the log is dark` if the slice is named
+and the super did not).
 
 `kindlog` means the first four bytes of that slice are `KLOG`, or MBR type
-`0x6c` after a second read. G45 lays the superblock; G46 inks the book
-there and waxes gap entropy so leftover reserved-area bytes do not split
-the hall.
+`0x6c` after a second read. G45 lays the superblock; G47 caches a live
+super at probe (`the log is lit`) and inks the book there. Gap entropy is
+waxed so leftover reserved-area bytes do not split the hall.
 
 ## Two jobs for FAT
 

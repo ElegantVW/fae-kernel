@@ -733,8 +733,10 @@ def main() -> int:
         t = serial.replace("\r", "")
         if "kindling: fat" not in t:
             return fail("no fat", serial)
-        if "kindling: 6c 64 kindlog" not in t:
+        if "kindling: 6c 64 1984 kindlog" not in t:
             return fail("KINDLOG slice not named", serial)
+        if "the log is lit" not in t:
+            return fail("KINDLOG super not live", serial)
         if "kindling: ingle ok\ningle\n" not in t:
             return fail("spark never wrote its name", serial)
         serial = serial_has("who keeps this fire", 8)

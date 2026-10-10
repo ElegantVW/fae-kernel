@@ -4,8 +4,9 @@
 //! LBAs: `hands` 1–2, `twin` 3–4, `hand` 5. FAT stays the ESP. Writes are
 //! MSC WRITE(10)+reread, KINDLING `85C7-AA81` only, never the superblock
 //! and never outside this slice. Live is the superblock itself (magic, ver,
-//! vol, secs, xor) — not the FAT `volume_id()` helper. Book leaves never
-//! fall through to FAT when a KINDLOG slice is named.
+//! vol, super `n` ≤ slice secs, xor), cached at probe so enlist does not
+//! depend on a second READ(10). Book leaves never fall through to FAT when
+//! a KINDLOG slice is named.
 
 use crate::start::serial_print;
 use crate::usb;
@@ -24,6 +25,10 @@ const HAND_LEN: u64 = 32;
 const EPERM: u64 = 1;
 const EIO: u64 = 5;
 const ENODEV: u64 = 19;
+
+static mut LIT: bool = false;
+static mut LOG_START: u32 = 0;
+static mut LOG_SECS: u32 = 0;
 
 fn err(n: u64) -> u64 {
     0u64.wrapping_sub(n)
@@ -77,8 +82,8 @@ fn super_ok(buf: u64, secs: u32) -> bool {
     let xor = r32le(buf + 16);
     ver == VERSION
         && vol == KINDLING_VOL
-        && n == secs
         && n >= MIN_SECS
+        && n <= secs
         && xor == checksum(ver, vol, n)
 }
 
@@ -97,8 +102,73 @@ pub fn speak_dark() {
     speak("the log is dark\n");
 }
 
+/// Forget a prior super. `store::probe` calls this before the walk.
+pub fn reset() {
+    unsafe {
+        LIT = false;
+        LOG_START = 0;
+        LOG_SECS = 0;
+    }
+}
+
+/// Cache a live super from a sector already in hand (probe / refresh).
+pub fn remember(start: u32, secs: u32, buf: u64) {
+    if start == 0 || secs < MIN_SECS {
+        return;
+    }
+    if !super_ok(buf, secs) {
+        return;
+    }
+    let n = r32le(buf + 12);
+    unsafe {
+        LIT = true;
+        LOG_START = start;
+        LOG_SECS = n;
+    }
+}
+
+/// Cached slice used for writes. Super `n`, not a possibly-wrong MBR count.
+pub fn slice() -> Option<(u32, u32)> {
+    unsafe {
+        if LIT && LOG_START != 0 && LOG_SECS >= MIN_SECS {
+            Some((LOG_START, LOG_SECS))
+        } else {
+            None
+        }
+    }
+}
+
+/// Re-read the super after FAT is claimed. Quiet if already lit.
+pub fn refresh() {
+    if unsafe { LIT } {
+        return;
+    }
+    let Some((start, secs)) = crate::store::first_kindlog() else {
+        return;
+    };
+    let Some(buf) = usb::read_sec(start) else {
+        return;
+    };
+    remember(start, secs, buf);
+}
+
+/// Glass after `fat`: lit when the super checked out, dark when named and not.
+pub fn paint_live() {
+    if !named() {
+        return;
+    }
+    if live() {
+        speak("the log is lit\n");
+    } else {
+        speak("the log is dark\n");
+    }
+}
+
 /// Superblock checks out and the slice is big enough for the book.
 pub fn live() -> bool {
+    if slice().is_some() {
+        return true;
+    }
     let Some((start, secs)) = crate::store::first_kindlog() else {
         return false;
     };
@@ -108,11 +178,12 @@ pub fn live() -> bool {
     let Some(buf) = usb::read_sec(start) else {
         return false;
     };
-    super_ok(buf, secs)
+    remember(start, secs, buf);
+    slice().is_some()
 }
 
 fn abs_lba(rel: u32) -> Option<u32> {
-    let (start, secs) = crate::store::first_kindlog()?;
+    let (start, secs) = slice().or_else(crate::store::first_kindlog)?;
     if rel == 0 || rel >= secs {
         return None;
     }
