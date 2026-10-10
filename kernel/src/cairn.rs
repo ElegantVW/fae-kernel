@@ -315,7 +315,7 @@ fn cairn_xor(base: u64, len: u64) -> u32 {
 /// slice that is not live paints `the log is dark` for those names and
 /// does not fall through to FAT.
 /// Other names, if missing from the cairn, stow the
-/// FAT volume's root — WRITE(10) each sector, READ(10) compare, KINDLING
+/// FAT volume's root — WRITE(10) each sector, flush, READ(10) compare, KINDLING
 /// `85C7-AA81` only. FAT32 creates a missing or empty root file of `len`;
 /// a present file of another non-zero size is `-EPERM`. FAT16 re-inks only.
 /// Cairn ink still goes through ATA, re-reads, and rewrites LBA0. Returns

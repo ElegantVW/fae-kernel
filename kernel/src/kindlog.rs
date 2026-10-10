@@ -2,7 +2,7 @@
 //!
 //! Superblock magic `KLOG` at partition LBA 0. Seals sit at fixed relative
 //! LBAs: `hands` 1–2, `twin` 3–4, `hand` 5. FAT stays the ESP. Writes are
-//! MSC WRITE(10)+reread, KINDLING `85C7-AA81` only, never the superblock
+//! MSC WRITE(10)+flush+reread, KINDLING `85C7-AA81` only, never the superblock
 //! and never outside this slice. Live is the superblock itself (magic, ver,
 //! vol, super `n` ≤ slice secs, xor), cached at probe so enlist does not
 //! depend on a second READ(10). Book leaves never fall through to FAT when

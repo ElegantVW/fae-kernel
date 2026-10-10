@@ -1,5 +1,9 @@
 # fae-kernel changelog
 
+## ink-g48 (2026-10-10)
+
+- Iron G47 painted `the log is lit`, then `the ink will not hold` / `the book is split` / `kindling: gleam exit 1`. WRITE(10) of KINDLOG LBA 65 landed; the immediate reread missed, so `stow` stopped before the twin and `roll` gleaned `-EIO`. `commit_prepared` now SYNCHRONIZE CACHE (10) after WRITE, settles, then READ(10) compares; five tries; TUR recovers the pipe so a miss stays in the hall. KINDLING `85C7-AA81` only.
+
 ## kindlog-g47 (2026-10-10)
 
 - Iron G46 painted `the log is dark` twice then `the ink will not hold`: `live()` re-read the super at enlist and required MBR `secs` to equal the super's `n`. A named slice whose super already checked out at probe stays lit — the cache is the super's own size, not the MBR count. Glass paints sector count on each store line (`6c 64 1984 kindlog`) and `the log is lit` after `fat`. KINDLOG is classified before FAT (start LBA order). WRITE still uses that cached slice, KINDLING `85C7-AA81` only.

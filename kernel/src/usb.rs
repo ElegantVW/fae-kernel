@@ -1210,8 +1210,9 @@ pub(crate) fn disk_geom() -> Option<(u32, u32)> {
     Some((h.blk, h.n_lba))
 }
 
-/// WRITE(10)+reread one sector. Only KINDLOG data LBAs (not the superblock,
-/// not FAT, not MBR). KINDLING `85C7-AA81` still gates `msc_write10`.
+/// WRITE(10)+flush+reread one sector. Only KINDLOG data LBAs (not the
+/// superblock, not FAT, not MBR). KINDLING `85C7-AA81` still gates
+/// `msc_write10`.
 pub(crate) fn write_kindlog(lba: u32, src: &[u8]) -> bool {
     let Some((start, secs)) = crate::kindlog::slice() else {
         return false;
@@ -1910,22 +1911,33 @@ fn restore_verify(h: &mut Host) {
     }
 }
 
-/// WRITE(10) the sector already copied into MSC_VERIFY; READ(10) compare.
-/// Three tries. TUR + settle between misses — iron flash can lag the cache.
+/// SYNCHRONIZE CACHE (10). Cheap sticks may CHECK CONDITION; recover the pipe.
+fn flush_media(h: &mut Host) {
+    let cdb = [0x35, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    if !bot(h, &cdb, 0, 0, false) {
+        let _ = msc_ready(h);
+    }
+}
+
+/// WRITE(10) the sector already copied into MSC_VERIFY; flush; READ(10) compare.
+/// Five tries. TUR + settle between misses — iron flash can lag the cache.
 fn commit_prepared(h: &mut Host, lba: u32) -> bool {
     let mut tries = 0u8;
-    while tries < 3 {
+    while tries < 5 {
         restore_verify(h);
-        if msc_write10(h, lba, h.data + MSC_DATA, 1, 512)
-            && msc_read10(h, lba, h.data + MSC_DATA, 1, 512)
-            && sector_match(h)
-        {
-            return true;
+        if msc_write10(h, lba, h.data + MSC_DATA, 1, 512) {
+            flush_media(h);
+            recover();
+            settle(h, 20);
+            if msc_read10(h, lba, h.data + MSC_DATA, 1, 512) && sector_match(h) {
+                return true;
+            }
         }
         let _ = msc_ready(h);
         recover();
         tries = tries.saturating_add(1);
     }
+    let _ = msc_ready(h);
     false
 }
 
@@ -2514,7 +2526,7 @@ fn finish_write(h: &mut Host, clus: u32, len: u64, buf: u64) -> u64 {
 
 /// Re-ink a named root file, or create it when missing / empty.
 /// Exact measure. KINDLING `85C7-AA81` only. WRITE(10) each sector,
-/// READ(10) compare. DMA dest stays MSC_DATA. FAT32 create; FAT16 re-inks.
+/// flush, READ(10) compare. DMA dest stays MSC_DATA. FAT32 create; FAT16 re-inks.
 pub fn stow_fat(name: &[u8], buf: u64, len: u64) -> u64 {
     if buf == 0 || len == 0 || len > GLEAN_MAX || name.is_empty() || name.len() > 64 {
         return err(EPERM);
